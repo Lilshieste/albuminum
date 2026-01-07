@@ -31,11 +31,11 @@ function App() {
       <div className="albums-grid">
         {albums.map(album => (
           <div key={album.id} className="album-card">
-            <img src={album.coverImage} alt={album.title} />
+            <img src={album.coverImage.path} alt={album.title} />
             <div className="album-info">
               <h2>{album.title}</h2>
               <p className="description">{album.description}</p>
-              <p className="meta">{album.photoCount} photos • {album.createdAt}</p>
+              <p className="meta">{album.photos.length} photos • {album.createdAt}</p>
             </div>
           </div>
         ))}
