@@ -35,7 +35,7 @@ function App() {
             <div className="album-info">
               <h2>{album.title}</h2>
               <p className="description">{album.description}</p>
-              <p className="meta">{album.photos.length} photos • {album.createdAt}</p>
+              <p className="meta">{album.images.length} photos • {album.createdAt}</p>
             </div>
           </div>
         ))}
