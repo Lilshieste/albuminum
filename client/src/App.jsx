@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL;
+
 function App() {
   const [albums, setAlbums] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/albums')
+    fetch(`${API_BASE_URL}/api/albums`)
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch albums');
         return res.json();

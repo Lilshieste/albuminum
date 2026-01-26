@@ -6,7 +6,12 @@ const albumsRouter = require('./routes/albums');
 require('dotenv').config();
 
 const app = express();
-const PORT = 3001;
+const port = parseInt(process.env.PORT, 10);
+
+if (isNaN(port)) {
+  console.error("CRITICAL ERROR: PORT environment variable is not set or invalid.");
+  process.exit(1);
+}
 
 app.use(cors());
 app.use(express.json());
@@ -19,6 +24,6 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/albums', albumsRouter);
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });
