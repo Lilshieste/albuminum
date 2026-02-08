@@ -1,15 +1,21 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL;
-
 function App() {
   const [albums, setAlbums] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const getApiPrefix = () => {
+    if (window.location.pathname.startsWith('/node')) return '/node';
+    if (window.location.pathname.startsWith('/dotnet')) return '/dotnet';
+    return '/dotnet';
+  };
+
+  const apiPrefix = getApiPrefix(); 
+
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/albums`)
+    fetch(`${apiPrefix}/api/albums`)
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch albums');
         return res.json();

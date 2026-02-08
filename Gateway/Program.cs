@@ -8,6 +8,8 @@ builder.Services.AddReverseProxy()
 
 var app = builder.Build();
 
-app.MapReverseProxy();
+// Default to the .Net backend
+app.MapGet("/", () => Results.Redirect("/dotnet/"));
 
+app.MapReverseProxy();
 app.Run();
