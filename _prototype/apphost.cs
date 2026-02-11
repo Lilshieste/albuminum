@@ -9,10 +9,12 @@ var dotnetBackend = builder.AddProject<Projects.server_dotnet>("dotnet-api")
        .WithExternalHttpEndpoints();
 
 var nodeBackend = builder.AddJavaScriptApp("node-api", "./server")
+       .WithNpm()
        .WithHttpEndpoint(env: "PORT")
        .WithArgs("--workspace", "server");
 
 var frontend = builder.AddViteApp("react-frontend", "./client")
+       .WithNpm()
        .WithExternalHttpEndpoints();
 
 var getDotNetBackendBaseUrl = () => dotnetBackend.GetEndpoint("http").Url;
