@@ -3,34 +3,49 @@ defmodule Albuminum.Gallery do
   The Gallery context.
 
   Handles albums, images, and their relationships.
+  All album operations are scoped to the current user.
   """
 
   import Ecto.Query, warn: false
   alias Albuminum.Repo
-
+  alias Albuminum.Accounts.Scope
   alias Albuminum.Gallery.{Album, Image, AlbumImage}
 
   # ============================================================================
-  # Albums
+  # Albums (scoped to user)
   # ============================================================================
 
-  def list_albums do
-    Repo.all(Album)
+  @doc """
+  Returns albums for the current user.
+  """
+  def list_albums(%Scope{user: user}) do
+    from(a in Album, where: a.user_id == ^user.id)
+    |> Repo.all()
   end
 
-  def get_album!(id), do: Repo.get!(Album, id)
+  @doc """
+  Gets album by ID, scoped to current user.
+  Raises if album doesn't exist or doesn't belong to user.
+  """
+  def get_album!(%Scope{user: user}, id) do
+    from(a in Album, where: a.id == ^id and a.user_id == ^user.id)
+    |> Repo.one!()
+  end
 
   @doc """
-  Gets album with images preloaded, ordered by position.
+  Gets album with images preloaded, scoped to current user.
   """
-  def get_album_with_images!(id) do
-    Album
-    |> Repo.get!(id)
+  def get_album_with_images!(%Scope{} = scope, id) do
+    scope
+    |> get_album!(id)
     |> Repo.preload(album_images: :image)
   end
 
-  def create_album(attrs) do
-    %Album{}
+  @doc """
+  Creates album for current user.
+  """
+  def create_album(%Scope{user: user}, attrs) do
+    %Album{user_id: user.id}
     |> Album.changeset(attrs)
     |> Repo.insert()
   end
@@ -50,7 +65,7 @@ defmodule Albuminum.Gallery do
   end
 
   # ============================================================================
-  # Images
+  # Images (shared across all users)
   # ============================================================================
 
   def list_images do
@@ -73,7 +88,6 @@ defmodule Albuminum.Gallery do
   Adds image to album at end of current order.
   """
   def add_image_to_album(%Album{} = album, %Image{} = image) do
-    # Get next position (max position + 1, or 0 if empty)
     next_position =
       from(ai in AlbumImage,
         where: ai.album_id == ^album.id,

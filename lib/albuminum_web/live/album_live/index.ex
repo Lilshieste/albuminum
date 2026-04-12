@@ -47,18 +47,14 @@ defmodule AlbuminumWeb.AlbumLive.Index do
     {:ok,
      socket
      |> assign(:page_title, "Listing Albums")
-     |> stream(:albums, list_albums())}
+     |> stream(:albums, Gallery.list_albums(socket.assigns.current_scope))}
   end
 
   @impl true
   def handle_event("delete", %{"id" => id}, socket) do
-    album = Gallery.get_album!(id)
+    album = Gallery.get_album!(socket.assigns.current_scope, id)
     {:ok, _} = Gallery.delete_album(album)
 
     {:noreply, stream_delete(socket, :albums, album)}
-  end
-
-  defp list_albums() do
-    Gallery.list_albums()
   end
 end

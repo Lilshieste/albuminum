@@ -37,7 +37,7 @@ defmodule AlbuminumWeb.AlbumLive.Form do
   defp return_to(_), do: "index"
 
   defp apply_action(socket, :edit, %{"id" => id}) do
-    album = Gallery.get_album!(id)
+    album = Gallery.get_album!(socket.assigns.current_scope, id)
 
     socket
     |> assign(:page_title, "Edit Album")
@@ -78,7 +78,7 @@ defmodule AlbuminumWeb.AlbumLive.Form do
   end
 
   defp save_album(socket, :new, album_params) do
-    case Gallery.create_album(album_params) do
+    case Gallery.create_album(socket.assigns.current_scope, album_params) do
       {:ok, album} ->
         {:noreply,
          socket

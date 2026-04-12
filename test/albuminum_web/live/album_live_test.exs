@@ -7,14 +7,14 @@ defmodule AlbuminumWeb.AlbumLiveTest do
   @create_attrs %{name: "some name", description: "some description"}
   @update_attrs %{name: "some updated name", description: "some updated description"}
   @invalid_attrs %{name: nil, description: nil}
-  defp create_album(_) do
-    album = album_fixture()
 
+  defp create_album(%{scope: scope}) do
+    album = album_fixture(%{scope: scope})
     %{album: album}
   end
 
   describe "Index" do
-    setup [:create_album]
+    setup [:register_and_log_in_user, :create_album]
 
     test "lists all albums", %{conn: conn, album: album} do
       {:ok, _index_live, html} = live(conn, ~p"/albums")
@@ -84,7 +84,7 @@ defmodule AlbuminumWeb.AlbumLiveTest do
   end
 
   describe "Show" do
-    setup [:create_album]
+    setup [:register_and_log_in_user, :create_album]
 
     test "displays album", %{conn: conn, album: album} do
       {:ok, _show_live, html} = live(conn, ~p"/albums/#{album}")
@@ -117,6 +117,12 @@ defmodule AlbuminumWeb.AlbumLiveTest do
       html = render(show_live)
       assert html =~ "Album updated successfully"
       assert html =~ "some updated name"
+    end
+  end
+
+  describe "unauthenticated access" do
+    test "redirects to login when not authenticated", %{conn: conn} do
+      assert {:error, {:redirect, %{to: "/users/log-in"}}} = live(conn, ~p"/albums")
     end
   end
 end

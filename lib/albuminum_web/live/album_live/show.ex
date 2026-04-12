@@ -81,7 +81,8 @@ defmodule AlbuminumWeb.AlbumLive.Show do
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
-    album = Gallery.get_album_with_images!(id)
+    scope = socket.assigns.current_scope
+    album = Gallery.get_album_with_images!(scope, id)
     available_images = Gallery.list_images_not_in_album(album)
 
     {:ok,
@@ -93,13 +94,13 @@ defmodule AlbuminumWeb.AlbumLive.Show do
 
   @impl true
   def handle_event("add_image", %{"image-id" => image_id}, socket) do
+    scope = socket.assigns.current_scope
     album = socket.assigns.album
     image = Gallery.get_image!(image_id)
 
     case Gallery.add_image_to_album(album, image) do
       {:ok, _} ->
-        # Reload album and available images
-        album = Gallery.get_album_with_images!(album.id)
+        album = Gallery.get_album_with_images!(scope, album.id)
         available_images = Gallery.list_images_not_in_album(album)
 
         {:noreply,
@@ -114,13 +115,13 @@ defmodule AlbuminumWeb.AlbumLive.Show do
   end
 
   def handle_event("remove_image", %{"image-id" => image_id}, socket) do
+    scope = socket.assigns.current_scope
     album = socket.assigns.album
     image = Gallery.get_image!(image_id)
 
     Gallery.remove_image_from_album(album, image)
 
-    # Reload
-    album = Gallery.get_album_with_images!(album.id)
+    album = Gallery.get_album_with_images!(scope, album.id)
     available_images = Gallery.list_images_not_in_album(album)
 
     {:noreply,
@@ -131,13 +132,11 @@ defmodule AlbuminumWeb.AlbumLive.Show do
   end
 
   def handle_event("reorder", %{"ids" => image_ids}, socket) do
+    scope = socket.assigns.current_scope
     album = socket.assigns.album
 
-    # Update positions in DB
     Gallery.reorder_album_images(album, image_ids)
-
-    # Reload to get fresh positions
-    album = Gallery.get_album_with_images!(album.id)
+    album = Gallery.get_album_with_images!(scope, album.id)
 
     {:noreply, assign(socket, :album, album)}
   end

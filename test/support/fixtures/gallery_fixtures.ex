@@ -4,18 +4,29 @@ defmodule Albuminum.GalleryFixtures do
   entities via the `Albuminum.Gallery` context.
   """
 
+  import Albuminum.AccountsFixtures
+
   @doc """
-  Generate a album.
+  Generate an album for a user.
+  Accepts optional scope, creates one if not provided.
   """
-  def album_fixture(attrs \\ %{}) do
+  def album_fixture(attrs \\ %{})
+
+  def album_fixture(%{scope: scope} = attrs) do
     {:ok, album} =
       attrs
+      |> Map.delete(:scope)
       |> Enum.into(%{
         description: "some description",
         name: "some name"
       })
-      |> Albuminum.Gallery.create_album()
+      |> then(&Albuminum.Gallery.create_album(scope, &1))
 
     album
+  end
+
+  def album_fixture(attrs) do
+    scope = user_scope_fixture()
+    album_fixture(Map.put(attrs, :scope, scope))
   end
 end
