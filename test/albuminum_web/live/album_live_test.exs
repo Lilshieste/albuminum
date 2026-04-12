@@ -1,0 +1,122 @@
+defmodule AlbuminumWeb.AlbumLiveTest do
+  use AlbuminumWeb.ConnCase
+
+  import Phoenix.LiveViewTest
+  import Albuminum.GalleryFixtures
+
+  @create_attrs %{name: "some name", description: "some description"}
+  @update_attrs %{name: "some updated name", description: "some updated description"}
+  @invalid_attrs %{name: nil, description: nil}
+  defp create_album(_) do
+    album = album_fixture()
+
+    %{album: album}
+  end
+
+  describe "Index" do
+    setup [:create_album]
+
+    test "lists all albums", %{conn: conn, album: album} do
+      {:ok, _index_live, html} = live(conn, ~p"/albums")
+
+      assert html =~ "Listing Albums"
+      assert html =~ album.name
+    end
+
+    test "saves new album", %{conn: conn} do
+      {:ok, index_live, _html} = live(conn, ~p"/albums")
+
+      assert {:ok, form_live, _} =
+               index_live
+               |> element("a", "New Album")
+               |> render_click()
+               |> follow_redirect(conn, ~p"/albums/new")
+
+      assert render(form_live) =~ "New Album"
+
+      assert form_live
+             |> form("#album-form", album: @invalid_attrs)
+             |> render_change() =~ "can&#39;t be blank"
+
+      assert {:ok, index_live, _html} =
+               form_live
+               |> form("#album-form", album: @create_attrs)
+               |> render_submit()
+               |> follow_redirect(conn, ~p"/albums")
+
+      html = render(index_live)
+      assert html =~ "Album created successfully"
+      assert html =~ "some name"
+    end
+
+    test "updates album in listing", %{conn: conn, album: album} do
+      {:ok, index_live, _html} = live(conn, ~p"/albums")
+
+      assert {:ok, form_live, _html} =
+               index_live
+               |> element("#albums-#{album.id} a", "Edit")
+               |> render_click()
+               |> follow_redirect(conn, ~p"/albums/#{album}/edit")
+
+      assert render(form_live) =~ "Edit Album"
+
+      assert form_live
+             |> form("#album-form", album: @invalid_attrs)
+             |> render_change() =~ "can&#39;t be blank"
+
+      assert {:ok, index_live, _html} =
+               form_live
+               |> form("#album-form", album: @update_attrs)
+               |> render_submit()
+               |> follow_redirect(conn, ~p"/albums")
+
+      html = render(index_live)
+      assert html =~ "Album updated successfully"
+      assert html =~ "some updated name"
+    end
+
+    test "deletes album in listing", %{conn: conn, album: album} do
+      {:ok, index_live, _html} = live(conn, ~p"/albums")
+
+      assert index_live |> element("#albums-#{album.id} a", "Delete") |> render_click()
+      refute has_element?(index_live, "#albums-#{album.id}")
+    end
+  end
+
+  describe "Show" do
+    setup [:create_album]
+
+    test "displays album", %{conn: conn, album: album} do
+      {:ok, _show_live, html} = live(conn, ~p"/albums/#{album}")
+
+      assert html =~ album.name
+      assert html =~ "Images in Album"
+    end
+
+    test "updates album and returns to show", %{conn: conn, album: album} do
+      {:ok, show_live, _html} = live(conn, ~p"/albums/#{album}")
+
+      assert {:ok, form_live, _} =
+               show_live
+               |> element("a", "Edit")
+               |> render_click()
+               |> follow_redirect(conn, ~p"/albums/#{album}/edit?return_to=show")
+
+      assert render(form_live) =~ "Edit Album"
+
+      assert form_live
+             |> form("#album-form", album: @invalid_attrs)
+             |> render_change() =~ "can&#39;t be blank"
+
+      assert {:ok, show_live, _html} =
+               form_live
+               |> form("#album-form", album: @update_attrs)
+               |> render_submit()
+               |> follow_redirect(conn, ~p"/albums/#{album}")
+
+      html = render(show_live)
+      assert html =~ "Album updated successfully"
+      assert html =~ "some updated name"
+    end
+  end
+end
