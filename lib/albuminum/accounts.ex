@@ -6,7 +6,8 @@ defmodule Albuminum.Accounts do
   import Ecto.Query, warn: false
   alias Albuminum.Repo
 
-  alias Albuminum.Accounts.{User, UserToken, UserNotifier}
+  alias Albuminum.Accounts.{OAuthToken, User, UserToken, UserNotifier}
+  alias Albuminum.OAuth.Google
 
   ## Database getters
 
@@ -293,5 +294,114 @@ defmodule Albuminum.Accounts do
         {:ok, {user, tokens_to_expire}}
       end
     end)
+  end
+
+  ## Google OAuth
+
+  @doc """
+  Finds or creates a user from Google OAuth.
+
+  Strategy:
+  1. If user with google_id exists, return it
+  2. If user with email exists, link google_id and return
+  3. Otherwise create new user with auto-confirmation
+  """
+  def find_or_create_google_user(%{"id" => google_id, "email" => email} = _user_info, token) do
+    Repo.transact(fn ->
+      user =
+        case Repo.get_by(User, google_id: google_id) do
+          %User{} = user ->
+            user
+
+          nil ->
+            case get_user_by_email(email) do
+              %User{} = user ->
+                {:ok, user} =
+                  user
+                  |> User.google_changeset(%{google_id: google_id})
+                  |> Repo.update()
+
+                user
+
+              nil ->
+                {:ok, user} =
+                  %User{}
+                  |> User.google_registration_changeset(%{email: email, google_id: google_id})
+                  |> Repo.insert()
+
+                user
+            end
+        end
+
+      upsert_oauth_token(user, "google", token)
+
+      {:ok, user}
+    end)
+  end
+
+  @doc """
+  Upserts an OAuth token for a user and provider.
+  """
+  def upsert_oauth_token(%User{id: user_id}, provider, %OAuth2.AccessToken{} = token) do
+    expires_at =
+      if token.expires_at do
+        DateTime.from_unix!(token.expires_at)
+      end
+
+    attrs = %{
+      user_id: user_id,
+      provider: provider,
+      access_token: token.access_token,
+      refresh_token: token.refresh_token,
+      expires_at: expires_at,
+      scope: token.other_params["scope"]
+    }
+
+    %OAuthToken{}
+    |> OAuthToken.changeset(attrs)
+    |> Repo.insert!(
+      on_conflict: {:replace, [:access_token, :refresh_token, :expires_at, :scope, :updated_at]},
+      conflict_target: [:user_id, :provider]
+    )
+  end
+
+  @doc """
+  Gets a valid Google access token for a user.
+  Automatically refreshes if expired.
+  """
+  def get_google_access_token(%User{id: user_id}) do
+    case Repo.get_by(OAuthToken, user_id: user_id, provider: "google") do
+      nil ->
+        {:error, :not_connected}
+
+      token ->
+        maybe_refresh_and_return(token)
+    end
+  end
+
+  defp maybe_refresh_and_return(%OAuthToken{expires_at: nil} = token) do
+    {:ok, OAuthToken.decrypt_access_token(token)}
+  end
+
+  defp maybe_refresh_and_return(%OAuthToken{expires_at: expires_at} = token) do
+    if DateTime.compare(expires_at, DateTime.utc_now()) == :lt do
+      refresh_google_token(token)
+    else
+      {:ok, OAuthToken.decrypt_access_token(token)}
+    end
+  end
+
+  defp refresh_google_token(%OAuthToken{user_id: user_id} = token) do
+    refresh_token = OAuthToken.decrypt_refresh_token(token)
+
+    case refresh_token do
+      nil ->
+        {:error, :no_refresh_token}
+
+      refresh ->
+        new_client = Google.refresh_token!(refresh)
+        upsert_oauth_token(%User{id: user_id}, "google", new_client.token)
+        {:ok, new_client.token.access_token}
+    end
   end
 end

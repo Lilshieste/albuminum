@@ -394,4 +394,68 @@ defmodule Albuminum.AccountsTest do
       refute inspect(%User{password: "123456"}) =~ "password: \"123456\""
     end
   end
+
+  ## Google OAuth tests
+
+  describe "find_or_create_google_user/2" do
+    test "creates new user when google_id and email are new" do
+      user_info = google_user_info_fixture()
+      token = oauth_token_fixture()
+
+      {:ok, user} = Accounts.find_or_create_google_user(user_info, token)
+
+      assert user.email == user_info["email"]
+      assert user.google_id == user_info["id"]
+      assert user.confirmed_at != nil
+    end
+
+    test "links existing user when email matches" do
+      existing_user = user_fixture()
+      user_info = google_user_info_fixture(%{"email" => existing_user.email})
+      token = oauth_token_fixture()
+
+      {:ok, user} = Accounts.find_or_create_google_user(user_info, token)
+
+      assert user.id == existing_user.id
+      assert user.google_id == user_info["id"]
+    end
+
+    test "returns existing user when google_id matches" do
+      user_info = google_user_info_fixture()
+      token = oauth_token_fixture()
+
+      {:ok, user1} = Accounts.find_or_create_google_user(user_info, token)
+      {:ok, user2} = Accounts.find_or_create_google_user(user_info, token)
+
+      assert user1.id == user2.id
+    end
+
+    test "stores OAuth token" do
+      user_info = google_user_info_fixture()
+      token = oauth_token_fixture()
+
+      {:ok, user} = Accounts.find_or_create_google_user(user_info, token)
+
+      oauth_token = Repo.get_by(Accounts.OAuthToken, user_id: user.id, provider: "google")
+      assert oauth_token != nil
+      assert oauth_token.scope == "openid email profile"
+    end
+  end
+
+  describe "get_google_access_token/1" do
+    test "returns access token when exists" do
+      user = google_user_fixture()
+
+      {:ok, access_token} = Accounts.get_google_access_token(user)
+
+      assert is_binary(access_token)
+      assert String.starts_with?(access_token, "test_access_token_")
+    end
+
+    test "returns error when user has no Google connection" do
+      user = user_fixture()
+
+      assert {:error, :not_connected} = Accounts.get_google_access_token(user)
+    end
+  end
 end

@@ -73,6 +73,12 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# Google OAuth configuration (overridden in dev.exs and runtime.exs)
+config :albuminum, Albuminum.OAuth.Google,
+  client_id: nil,
+  client_secret: nil,
+  redirect_uri: nil
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

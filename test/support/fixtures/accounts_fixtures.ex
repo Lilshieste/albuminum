@@ -86,4 +86,40 @@ defmodule Albuminum.AccountsFixtures do
       set: [inserted_at: dt, authenticated_at: dt]
     )
   end
+
+  # Google OAuth fixtures
+
+  def unique_google_id, do: "google_#{System.unique_integer([:positive])}"
+
+  def google_user_info_fixture(attrs \\ %{}) do
+    Map.merge(
+      %{
+        "id" => unique_google_id(),
+        "email" => unique_user_email(),
+        "name" => "Test User",
+        "picture" => "https://example.com/photo.jpg"
+      },
+      attrs
+    )
+  end
+
+  def oauth_token_fixture(attrs \\ %{}) do
+    defaults = %OAuth2.AccessToken{
+      access_token: "test_access_token_#{System.unique_integer()}",
+      refresh_token: "test_refresh_token_#{System.unique_integer()}",
+      expires_at: System.system_time(:second) + 3600,
+      token_type: "Bearer",
+      other_params: %{"scope" => "openid email profile"}
+    }
+
+    struct(defaults, attrs)
+  end
+
+  def google_user_fixture(attrs \\ %{}) do
+    user_info = google_user_info_fixture(attrs)
+    token = oauth_token_fixture()
+
+    {:ok, user} = Accounts.find_or_create_google_user(user_info, token)
+    user
+  end
 end

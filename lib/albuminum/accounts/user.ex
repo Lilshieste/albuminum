@@ -6,6 +6,7 @@ defmodule Albuminum.Accounts.User do
     field :email, :string
     field :password, :string, virtual: true, redact: true
     field :hashed_password, :string, redact: true
+    field :google_id, :string
     field :confirmed_at, :utc_datetime
     field :authenticated_at, :utc_datetime, virtual: true
 
@@ -128,5 +129,31 @@ defmodule Albuminum.Accounts.User do
   def valid_password?(_, _) do
     Bcrypt.no_user_verify()
     false
+  end
+
+  @doc """
+  A changeset for linking an existing user to Google OAuth.
+  """
+  def google_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:google_id])
+    |> unique_constraint(:google_id)
+  end
+
+  @doc """
+  A changeset for registering a new user via Google OAuth.
+  Auto-confirms the user since Google verified the email.
+  """
+  def google_registration_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:email, :google_id])
+    |> validate_required([:email, :google_id])
+    |> validate_format(:email, ~r/^[^@,;\s]+@[^@,;\s]+$/,
+      message: "must have the @ sign and no spaces"
+    )
+    |> validate_length(:email, max: 160)
+    |> unique_constraint(:email)
+    |> unique_constraint(:google_id)
+    |> put_change(:confirmed_at, DateTime.utc_now(:second))
   end
 end

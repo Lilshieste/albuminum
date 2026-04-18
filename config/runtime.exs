@@ -1,5 +1,16 @@
 import Config
 
+# Load .env files in dev/test
+if config_env() in [:dev, :test] do
+  env = Dotenvy.source!([".env", ".env.#{config_env()}", ".env.local"])
+
+  # Google OAuth
+  config :albuminum, Albuminum.OAuth.Google,
+    client_id: env["GOOGLE_CLIENT_ID"] || "dev-client-id",
+    client_secret: env["GOOGLE_CLIENT_SECRET"] || "dev-secret",
+    redirect_uri: env["GOOGLE_REDIRECT_URI"] || "http://localhost:4000/auth/google/callback"
+end
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration
@@ -111,4 +122,16 @@ if config_env() == :prod do
   #     config :swoosh, :api_client, Swoosh.ApiClient.Req
   #
   # See https://hexdocs.pm/swoosh/Swoosh.html#module-installation for details.
+
+  # Google OAuth configuration
+  config :albuminum, Albuminum.OAuth.Google,
+    client_id:
+      System.get_env("GOOGLE_CLIENT_ID") ||
+        raise("environment variable GOOGLE_CLIENT_ID is missing"),
+    client_secret:
+      System.get_env("GOOGLE_CLIENT_SECRET") ||
+        raise("environment variable GOOGLE_CLIENT_SECRET is missing"),
+    redirect_uri:
+      System.get_env("GOOGLE_REDIRECT_URI") ||
+        raise("environment variable GOOGLE_REDIRECT_URI is missing")
 end

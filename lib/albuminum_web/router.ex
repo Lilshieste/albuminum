@@ -67,6 +67,14 @@ defmodule AlbuminumWeb.Router do
     post "/users/register", UserRegistrationController, :create
   end
 
+  # Google OAuth routes
+  scope "/auth", AlbuminumWeb do
+    pipe_through [:browser, :redirect_if_user_is_authenticated]
+
+    get "/google", GoogleAuthController, :request
+    get "/google/callback", GoogleAuthController, :callback
+  end
+
   scope "/", AlbuminumWeb do
     pipe_through [:browser, :require_authenticated_user]
 
