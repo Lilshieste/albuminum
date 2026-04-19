@@ -136,4 +136,21 @@ defmodule Albuminum.AccountsFixtures do
     Accounts.upsert_oauth_token(user, "google", photos_token)
     user
   end
+
+  @doc """
+  Creates a Google user with an expired Photos token and no refresh token.
+  Simulates state where token refresh will fail.
+  """
+  def google_photos_user_with_expired_token_fixture(attrs \\ %{}) do
+    user = google_user_fixture(attrs)
+
+    expired_token = oauth_token_fixture(%{
+      expires_at: System.system_time(:second) - 3600,
+      refresh_token: nil,
+      other_params: %{"scope" => "openid email profile https://www.googleapis.com/auth/photospicker.mediaitems.readonly"}
+    })
+
+    Accounts.upsert_oauth_token(user, "google", expired_token)
+    user
+  end
 end

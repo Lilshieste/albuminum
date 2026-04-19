@@ -107,6 +107,7 @@ defmodule AlbuminumWeb.AlbumLive.Show do
         id="google-photos-browser"
         album={@album}
         current_scope={@current_scope}
+        current_path={@current_path}
       />
     </Layouts.app>
     """
@@ -126,6 +127,13 @@ defmodule AlbuminumWeb.AlbumLive.Show do
      |> assign(:available_images, available_images)
      |> assign(:grouped_images, grouped_images)
      |> assign(:collapsed_groups, MapSet.new())}
+  end
+
+  @impl true
+  def handle_params(_params, uri, socket) do
+    # Store current path for OAuth return redirect
+    %URI{path: path} = URI.parse(uri)
+    {:noreply, assign(socket, :current_path, path)}
   end
 
   @impl true
@@ -192,15 +200,9 @@ defmodule AlbuminumWeb.AlbumLive.Show do
       {:ok, _token} ->
         send_update(GooglePhotosBrowser, id: component_id, status: :idle)
 
-      {:error, :not_connected} ->
-        send_update(GooglePhotosBrowser, id: component_id, status: :not_connected)
-
       {:error, _} ->
-        send_update(GooglePhotosBrowser,
-          id: component_id,
-          status: :error,
-          error_message: "Failed to check Google connection"
-        )
+        # Token missing, refresh failed, or no photos scope - need re-auth
+        send_update(GooglePhotosBrowser, id: component_id, status: :not_connected)
     end
 
     {:noreply, socket}
@@ -242,17 +244,9 @@ defmodule AlbuminumWeb.AlbumLive.Show do
             {:noreply, socket}
         end
 
-      {:error, :not_connected} ->
-        send_update(GooglePhotosBrowser, id: component_id, status: :not_connected)
-        {:noreply, socket}
-
       {:error, _} ->
-        send_update(GooglePhotosBrowser,
-          id: component_id,
-          status: :error,
-          error_message: "Failed to authenticate with Google"
-        )
-
+        # Token missing, refresh failed, or no photos scope - need re-auth
+        send_update(GooglePhotosBrowser, id: component_id, status: :not_connected)
         {:noreply, socket}
     end
   end
@@ -291,12 +285,8 @@ defmodule AlbuminumWeb.AlbumLive.Show do
           end
 
         {:error, _} ->
-          send_update(GooglePhotosBrowser,
-            id: component_id,
-            status: :error,
-            error_message: "Google authentication expired"
-          )
-
+          # Token expired and refresh failed - need re-auth
+          send_update(GooglePhotosBrowser, id: component_id, status: :not_connected)
           {:noreply, clear_picker_state(socket)}
       end
     end
@@ -341,12 +331,8 @@ defmodule AlbuminumWeb.AlbumLive.Show do
         end
 
       {:error, _} ->
-        send_update(GooglePhotosBrowser,
-          id: component_id,
-          status: :error,
-          error_message: "Google authentication expired"
-        )
-
+        # Token expired and refresh failed - need re-auth
+        send_update(GooglePhotosBrowser, id: component_id, status: :not_connected)
         {:noreply, clear_picker_state(socket)}
     end
   end

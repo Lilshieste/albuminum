@@ -16,8 +16,10 @@ defmodule AlbuminumWeb.GoogleAuthController do
   Redirects to Google OAuth for Photos access (incremental auth).
   User must already be logged in.
   """
-  def connect_photos(conn, _params) do
-    redirect(conn, external: Google.authorize_url_for_photos!())
+  def connect_photos(conn, params) do
+    conn
+    |> put_session(:google_photos_return_to, params["return_to"])
+    |> redirect(external: Google.authorize_url_for_photos!())
   end
 
   @doc """
@@ -65,8 +67,11 @@ defmodule AlbuminumWeb.GoogleAuthController do
   defp handle_photos_callback(conn, user, token) do
     Accounts.upsert_oauth_token(user, "google", token)
 
+    return_to = get_session(conn, :google_photos_return_to) || ~p"/albums"
+
     conn
+    |> delete_session(:google_photos_return_to)
     |> put_flash(:info, "Google Photos connected!")
-    |> redirect(to: ~p"/albums")
+    |> redirect(to: return_to)
   end
 end

@@ -159,4 +159,34 @@ defmodule AlbuminumWeb.AlbumLiveTest do
       assert {:error, {:redirect, %{to: "/users/log-in"}}} = live(conn, ~p"/albums")
     end
   end
+
+  describe "Google Photos picker auth" do
+    setup do
+      user = Albuminum.AccountsFixtures.google_photos_user_with_expired_token_fixture()
+      scope = Albuminum.Accounts.Scope.for_user(user)
+      album = album_fixture(%{scope: scope})
+      conn = Phoenix.ConnTest.build_conn()
+      %{conn: log_in_user(conn, user), user: user, scope: scope, album: album}
+    end
+
+    test "shows re-auth prompt when token refresh fails on page load", %{conn: conn, album: album} do
+      {:ok, view, _html} = live(conn, ~p"/albums/#{album}")
+
+      # Component should show "Connect Google Photos" button for re-auth,
+      # NOT an error message with "Try Again"
+      html = render(view)
+      assert html =~ "Connect Google Photos"
+      refute html =~ "Try Again"
+      refute html =~ "Failed to"
+    end
+
+    test "re-auth link redirects to Google Photos OAuth with return path", %{conn: conn, album: album} do
+      {:ok, view, _html} = live(conn, ~p"/albums/#{album}")
+
+      # "Connect Google Photos" link should point to photos OAuth with return_to
+      html = render(view)
+      assert html =~ ~s(href="/auth/google/photos?return_to=)
+      assert html =~ ~s(return_to=%2Falbums%2F#{album.id})
+    end
+  end
 end
