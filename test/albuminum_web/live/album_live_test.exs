@@ -291,5 +291,68 @@ defmodule AlbuminumWeb.AlbumLiveTest do
 
       refute html =~ "id=\"lightbox\""
     end
+
+    test "lightbox works in public view", %{album: album} do
+      image = image_fixture(%{filename: "public_lightbox.jpg"})
+      Albuminum.Gallery.add_image_to_album(album, image)
+      {:ok, share} = Albuminum.Gallery.create_album_share(album)
+
+      conn = Phoenix.ConnTest.build_conn()
+      {:ok, view, _html} = live(conn, ~p"/view/#{share.token}")
+
+      # Click image to open lightbox
+      html = view |> element("img[alt='public_lightbox.jpg']") |> render_click()
+
+      assert html =~ "id=\"lightbox\""
+      assert html =~ "max-h-[90vh]"
+    end
+  end
+
+  describe "Public view layout" do
+    setup [:register_and_log_in_user, :create_album]
+
+    test "hides user menu in public view", %{album: album} do
+      {:ok, share} = Albuminum.Gallery.create_album_share(album)
+
+      conn = Phoenix.ConnTest.build_conn()
+      {:ok, _view, html} = live(conn, ~p"/view/#{share.token}")
+
+      # Should NOT show user menu items
+      refute html =~ "Settings"
+      refute html =~ "Log out"
+      refute html =~ "Log in"
+      refute html =~ "Register"
+    end
+
+    test "shows minimal footer with branding and theme toggle", %{album: album} do
+      {:ok, share} = Albuminum.Gallery.create_album_share(album)
+
+      conn = Phoenix.ConnTest.build_conn()
+      {:ok, _view, html} = live(conn, ~p"/view/#{share.token}")
+
+      # Footer should have Albuminum link and theme toggle
+      assert html =~ ~s(href="/")
+      assert html =~ "Albuminum"
+      assert html =~ "phx:set-theme"
+    end
+
+    test "does not show navbar header", %{album: album} do
+      {:ok, share} = Albuminum.Gallery.create_album_share(album)
+
+      conn = Phoenix.ConnTest.build_conn()
+      {:ok, _view, html} = live(conn, ~p"/view/#{share.token}")
+
+      # Should NOT have navbar elements
+      refute html =~ "GitHub"
+      refute html =~ ~s(class="navbar)
+    end
+
+    test "shows user menu in regular album view", %{conn: conn, album: album} do
+      {:ok, _view, html} = live(conn, ~p"/albums/#{album}")
+
+      # Regular view SHOULD show user menu
+      assert html =~ "Settings"
+      assert html =~ "Log out"
+    end
   end
 end

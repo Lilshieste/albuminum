@@ -107,6 +107,30 @@ defmodule AlbuminumWeb.Layouts do
   end
 
   @doc """
+  Minimal layout for public/shared views.
+  Emphasizes content, puts branding in subtle footer.
+  """
+  attr :flash, :map, required: true
+  slot :inner_block, required: true
+
+  def public(assigns) do
+    ~H"""
+    <main class="px-4 py-8 sm:px-6 lg:px-8 min-h-screen">
+      <div class="mx-auto max-w-4xl">
+        {render_slot(@inner_block)}
+      </div>
+    </main>
+
+    <footer class="fixed bottom-0 left-0 right-0 px-4 py-2 flex items-center justify-between text-xs text-base-content/50">
+      <a href="/" class="hover:text-base-content/70">Albuminum</a>
+      <.theme_toggle />
+    </footer>
+
+    <.flash_group flash={@flash} />
+    """
+  end
+
+  @doc """
   Provides dark vs light theme toggle based on themes defined in app.css.
 
   See <head> in root.html.heex which applies the theme before page load.

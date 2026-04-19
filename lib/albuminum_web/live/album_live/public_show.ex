@@ -11,7 +11,7 @@ defmodule AlbuminumWeb.AlbumLive.PublicShow do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.public flash={@flash}>
       <.header>
         {@album.name}
         <:subtitle>{@album.description}</:subtitle>
@@ -59,7 +59,7 @@ defmodule AlbuminumWeb.AlbumLive.PublicShow do
           />
         </div>
       <% end %>
-    </Layouts.app>
+    </Layouts.public>
     """
   end
 
@@ -77,7 +77,8 @@ defmodule AlbuminumWeb.AlbumLive.PublicShow do
      |> assign(:page_title, album.name)
      |> assign(:album, album)
      |> assign(:token, token)
-     |> assign(:selected_image, nil)}
+     |> assign(:selected_image, nil)
+     |> assign(:hide_user_menu, true)}
   end
 
   @impl true
