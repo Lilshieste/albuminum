@@ -212,7 +212,7 @@ defmodule AlbuminumWeb.AlbumLiveTest do
 
     test "clicking Stop Sharing removes share", %{conn: conn, album: album} do
       # Create share first
-      Albuminum.Gallery.create_album_share(album)
+      Albuminum.Gallery.toggle_album_share(album)
 
       {:ok, view, html} = live(conn, ~p"/albums/#{album}")
       assert html =~ "Share link:"
@@ -228,7 +228,7 @@ defmodule AlbuminumWeb.AlbumLiveTest do
     setup [:register_and_log_in_user, :create_album]
 
     test "accessible via share token without auth", %{album: album} do
-      {:ok, share} = Albuminum.Gallery.create_album_share(album)
+      {:ok, share} = Albuminum.Gallery.toggle_album_share(album)
 
       # Use fresh conn without auth
       conn = Phoenix.ConnTest.build_conn()
@@ -240,7 +240,7 @@ defmodule AlbuminumWeb.AlbumLiveTest do
     test "shows album images", %{album: album} do
       image = image_fixture(%{filename: "test_image.jpg"})
       Albuminum.Gallery.add_image_to_album(album, image)
-      {:ok, share} = Albuminum.Gallery.create_album_share(album)
+      {:ok, share} = Albuminum.Gallery.toggle_album_share(album)
 
       conn = Phoenix.ConnTest.build_conn()
       {:ok, _view, html} = live(conn, ~p"/view/#{share.token}")
@@ -248,12 +248,30 @@ defmodule AlbuminumWeb.AlbumLiveTest do
       assert html =~ "test_image.jpg"
     end
 
-    test "raises for invalid token" do
+    test "shows friendly error for invalid token" do
       conn = Phoenix.ConnTest.build_conn()
 
-      assert_raise Ecto.NoResultsError, fn ->
-        live(conn, ~p"/view/invalid_token")
-      end
+      {:ok, _view, html} = live(conn, ~p"/view/invalid_token")
+
+      assert html =~ "Album Not Found"
+      assert html =~ "no longer shared"
+      assert html =~ "Go Home"
+    end
+
+    test "realtime revocation when owner stops sharing", %{album: album} do
+      {:ok, share} = Albuminum.Gallery.toggle_album_share(album)
+      conn = Phoenix.ConnTest.build_conn()
+
+      # Viewer opens public view
+      {:ok, view, html} = live(conn, ~p"/view/#{share.token}")
+      assert html =~ album.name
+
+      # Owner stops sharing (triggers broadcast)
+      Albuminum.Gallery.toggle_album_share(album)
+
+      # Viewer should see "not found" automatically
+      html = render(view)
+      assert html =~ "Album Not Found"
     end
   end
 
@@ -295,7 +313,7 @@ defmodule AlbuminumWeb.AlbumLiveTest do
     test "lightbox works in public view", %{album: album} do
       image = image_fixture(%{filename: "public_lightbox.jpg"})
       Albuminum.Gallery.add_image_to_album(album, image)
-      {:ok, share} = Albuminum.Gallery.create_album_share(album)
+      {:ok, share} = Albuminum.Gallery.toggle_album_share(album)
 
       conn = Phoenix.ConnTest.build_conn()
       {:ok, view, _html} = live(conn, ~p"/view/#{share.token}")
@@ -312,7 +330,7 @@ defmodule AlbuminumWeb.AlbumLiveTest do
     setup [:register_and_log_in_user, :create_album]
 
     test "hides user menu in public view", %{album: album} do
-      {:ok, share} = Albuminum.Gallery.create_album_share(album)
+      {:ok, share} = Albuminum.Gallery.toggle_album_share(album)
 
       conn = Phoenix.ConnTest.build_conn()
       {:ok, _view, html} = live(conn, ~p"/view/#{share.token}")
@@ -325,7 +343,7 @@ defmodule AlbuminumWeb.AlbumLiveTest do
     end
 
     test "shows minimal footer with branding and theme toggle", %{album: album} do
-      {:ok, share} = Albuminum.Gallery.create_album_share(album)
+      {:ok, share} = Albuminum.Gallery.toggle_album_share(album)
 
       conn = Phoenix.ConnTest.build_conn()
       {:ok, _view, html} = live(conn, ~p"/view/#{share.token}")
@@ -337,7 +355,7 @@ defmodule AlbuminumWeb.AlbumLiveTest do
     end
 
     test "does not show navbar header", %{album: album} do
-      {:ok, share} = Albuminum.Gallery.create_album_share(album)
+      {:ok, share} = Albuminum.Gallery.toggle_album_share(album)
 
       conn = Phoenix.ConnTest.build_conn()
       {:ok, _view, html} = live(conn, ~p"/view/#{share.token}")

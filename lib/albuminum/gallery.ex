@@ -69,23 +69,48 @@ defmodule Albuminum.Gallery do
   # ============================================================================
 
   @doc """
-  Gets the share record for an album, if one exists.
+  Gets the active share record for an album, if one exists.
+  Returns nil if no share or share is inactive.
   """
   def get_album_share(%Album{id: album_id}) do
-    Repo.get_by(AlbumShare, album_id: album_id)
+    case Repo.get_by(AlbumShare, album_id: album_id) do
+      %AlbumShare{is_active: true} = share -> share
+      _ -> nil
+    end
   end
 
   @doc """
-  Creates a share link for an album.
-  Generates a unique token.
+  Toggles sharing for an album.
+  Creates share with token if none exists, otherwise toggles is_active.
+  Token stays the same across toggles.
+  Returns {:ok, share} with updated state.
   """
-  def create_album_share(%Album{id: album_id}) do
-    %AlbumShare{}
-    |> AlbumShare.changeset(%{
-      album_id: album_id,
-      token: generate_share_token()
-    })
-    |> Repo.insert()
+  def toggle_album_share(%Album{id: album_id}) do
+    result =
+      case Repo.get_by(AlbumShare, album_id: album_id) do
+        nil ->
+          # First time sharing - create with token
+          %AlbumShare{}
+          |> AlbumShare.changeset(%{
+            album_id: album_id,
+            token: generate_share_token(),
+            is_active: true
+          })
+          |> Repo.insert()
+
+        share ->
+          # Toggle existing share
+          share
+          |> AlbumShare.changeset(%{is_active: !share.is_active})
+          |> Repo.update()
+      end
+
+    case result do
+      {:ok, _} -> broadcast_album_update(album_id)
+      _ -> :ok
+    end
+
+    result
   end
 
   defp generate_share_token do
@@ -93,34 +118,12 @@ defmodule Albuminum.Gallery do
   end
 
   @doc """
-  Deletes the share link for an album.
-  """
-  def delete_album_share(%Album{} = album) do
-    case get_album_share(album) do
-      nil -> {:ok, nil}
-      share -> Repo.delete(share)
-    end
-  end
-
-  @doc """
-  Toggles sharing for an album.
-  Creates share if none exists, deletes if one does.
-  Returns {:ok, share} when created or {:ok, nil} when deleted.
-  """
-  def toggle_album_share(%Album{} = album) do
-    case get_album_share(album) do
-      nil -> create_album_share(album)
-      _share -> delete_album_share(album)
-    end
-  end
-
-  @doc """
   Gets an album by its share token.
   For public/unauthenticated access.
-  Raises if token is invalid.
+  Raises if token is invalid or share is inactive.
   """
   def get_album_by_share_token!(token) do
-    share = Repo.get_by!(AlbumShare, token: token)
+    share = Repo.get_by!(AlbumShare, token: token, is_active: true)
     Repo.get!(Album, share.album_id)
   end
 

@@ -9,6 +9,21 @@ defmodule AlbuminumWeb.AlbumLive.PublicShow do
   alias Albuminum.Gallery
 
   @impl true
+  def render(%{not_found: true} = assigns) do
+    ~H"""
+    <Layouts.public flash={@flash}>
+      <div class="flex flex-col items-center justify-center py-20 text-center">
+        <.icon name="hero-photo" class="w-16 h-16 text-base-content/30 mb-4" />
+        <h1 class="text-2xl font-semibold mb-2">Album Not Found</h1>
+        <p class="text-base-content/60 mb-6">
+          This album may have been removed or is no longer shared.
+        </p>
+        <a href="/" class="btn btn-primary">Go Home</a>
+      </div>
+    </Layouts.public>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.public flash={@flash}>
@@ -65,20 +80,34 @@ defmodule AlbuminumWeb.AlbumLive.PublicShow do
 
   @impl true
   def mount(%{"token" => token}, _session, socket) do
-    album = Gallery.get_album_with_images_by_share_token!(token)
+    case fetch_album(token) do
+      {:ok, album} ->
+        if connected?(socket) do
+          Gallery.subscribe_to_album(album.id)
+        end
 
-    # Subscribe to realtime updates
-    if connected?(socket) do
-      Gallery.subscribe_to_album(album.id)
+        {:ok,
+         socket
+         |> assign(:page_title, album.name)
+         |> assign(:album, album)
+         |> assign(:token, token)
+         |> assign(:selected_image, nil)
+         |> assign(:not_found, false)
+         |> assign(:hide_user_menu, true)}
+
+      :not_found ->
+        {:ok,
+         socket
+         |> assign(:page_title, "Not Found")
+         |> assign(:not_found, true)
+         |> assign(:hide_user_menu, true)}
     end
+  end
 
-    {:ok,
-     socket
-     |> assign(:page_title, album.name)
-     |> assign(:album, album)
-     |> assign(:token, token)
-     |> assign(:selected_image, nil)
-     |> assign(:hide_user_menu, true)}
+  defp fetch_album(token) do
+    {:ok, Gallery.get_album_with_images_by_share_token!(token)}
+  rescue
+    Ecto.NoResultsError -> :not_found
   end
 
   @impl true
@@ -93,8 +122,13 @@ defmodule AlbuminumWeb.AlbumLive.PublicShow do
 
   @impl true
   def handle_info({:album_updated, _album_id}, socket) do
-    # Reload album data
-    album = Gallery.get_album_with_images_by_share_token!(socket.assigns.token)
-    {:noreply, assign(socket, :album, album)}
+    # Reload album data (may have been unshared)
+    case fetch_album(socket.assigns.token) do
+      {:ok, album} ->
+        {:noreply, assign(socket, :album, album)}
+
+      :not_found ->
+        {:noreply, assign(socket, :not_found, true)}
+    end
   end
 end

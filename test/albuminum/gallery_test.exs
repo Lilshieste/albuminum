@@ -173,25 +173,44 @@ defmodule Albuminum.GalleryTest do
 
     alias Albuminum.Gallery.AlbumShare
 
-    test "create_album_share/1 creates a share with unique token" do
+    test "toggle_album_share/1 creates share when none exists" do
       album = album_fixture()
 
-      assert {:ok, %AlbumShare{} = share} = Gallery.create_album_share(album)
+      assert {:ok, %AlbumShare{is_active: true} = share} = Gallery.toggle_album_share(album)
       assert share.album_id == album.id
       assert is_binary(share.token)
       assert String.length(share.token) > 10
     end
 
-    test "create_album_share/1 fails for duplicate album" do
+    test "toggle_album_share/1 deactivates share when active" do
       album = album_fixture()
+      {:ok, share1} = Gallery.toggle_album_share(album)
 
-      assert {:ok, _share1} = Gallery.create_album_share(album)
-      assert {:error, _changeset} = Gallery.create_album_share(album)
+      assert {:ok, %AlbumShare{is_active: false}} = Gallery.toggle_album_share(album)
+      assert Gallery.get_album_share(album) == nil
+
+      # Token stays the same
+      {:ok, share2} = Gallery.toggle_album_share(album)
+      assert share2.token == share1.token
     end
 
-    test "get_album_share/1 returns share for album" do
+    test "toggle_album_share/1 preserves token across toggles" do
       album = album_fixture()
-      {:ok, share} = Gallery.create_album_share(album)
+
+      {:ok, share1} = Gallery.toggle_album_share(album)
+      token = share1.token
+
+      # Toggle off
+      Gallery.toggle_album_share(album)
+      # Toggle on
+      {:ok, share2} = Gallery.toggle_album_share(album)
+
+      assert share2.token == token
+    end
+
+    test "get_album_share/1 returns active share for album" do
+      album = album_fixture()
+      {:ok, share} = Gallery.toggle_album_share(album)
 
       assert Gallery.get_album_share(album) == share
     end
@@ -202,33 +221,17 @@ defmodule Albuminum.GalleryTest do
       assert Gallery.get_album_share(album) == nil
     end
 
-    test "delete_album_share/1 removes the share" do
+    test "get_album_share/1 returns nil when share is inactive" do
       album = album_fixture()
-      {:ok, _share} = Gallery.create_album_share(album)
+      Gallery.toggle_album_share(album)
+      Gallery.toggle_album_share(album)  # Deactivate
 
-      assert {:ok, _} = Gallery.delete_album_share(album)
-      assert Gallery.get_album_share(album) == nil
-    end
-
-    test "toggle_album_share/1 creates share when none exists" do
-      album = album_fixture()
-
-      assert {:ok, %AlbumShare{}} = Gallery.toggle_album_share(album)
-      assert Gallery.get_album_share(album) != nil
-    end
-
-    test "toggle_album_share/1 deletes share when one exists" do
-      album = album_fixture()
-      {:ok, _share} = Gallery.create_album_share(album)
-
-      # Returns the deleted share record
-      assert {:ok, %AlbumShare{}} = Gallery.toggle_album_share(album)
       assert Gallery.get_album_share(album) == nil
     end
 
     test "get_album_by_share_token!/1 returns album for valid token" do
       album = album_fixture()
-      {:ok, share} = Gallery.create_album_share(album)
+      {:ok, share} = Gallery.toggle_album_share(album)
 
       found = Gallery.get_album_by_share_token!(share.token)
       assert found.id == album.id
@@ -245,7 +248,7 @@ defmodule Albuminum.GalleryTest do
       album = album_fixture(%{scope: scope})
       image = image_fixture()
       Gallery.add_image_to_album(album, image)
-      {:ok, share} = Gallery.create_album_share(album)
+      {:ok, share} = Gallery.toggle_album_share(album)
 
       found = Gallery.get_album_with_images_by_share_token!(share.token)
       assert found.id == album.id
@@ -255,7 +258,7 @@ defmodule Albuminum.GalleryTest do
     test "share is deleted when album is deleted" do
       scope = user_scope_fixture()
       album = album_fixture(%{scope: scope})
-      {:ok, share} = Gallery.create_album_share(album)
+      {:ok, share} = Gallery.toggle_album_share(album)
       token = share.token
 
       Gallery.delete_album(album)

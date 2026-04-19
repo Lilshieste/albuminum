@@ -199,13 +199,11 @@ defmodule AlbuminumWeb.AlbumLive.Show do
     album = socket.assigns.album
 
     case Gallery.toggle_album_share(album) do
-      {:ok, %Gallery.AlbumShare{} = share} ->
-        # Check if share was just created or deleted by looking at Ecto metadata
-        if share.__meta__.state == :deleted do
-          {:noreply, assign(socket, :album_share, nil)}
-        else
-          {:noreply, assign(socket, :album_share, share)}
-        end
+      {:ok, %Gallery.AlbumShare{is_active: true} = share} ->
+        {:noreply, assign(socket, :album_share, share)}
+
+      {:ok, %Gallery.AlbumShare{is_active: false}} ->
+        {:noreply, assign(socket, :album_share, nil)}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to update sharing")}
