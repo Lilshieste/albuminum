@@ -256,4 +256,40 @@ defmodule AlbuminumWeb.AlbumLiveTest do
       end
     end
   end
+
+  describe "Image lightbox" do
+    setup [:register_and_log_in_user, :create_album]
+
+    test "clicking image opens lightbox", %{conn: conn, album: album} do
+      image = image_fixture(%{filename: "lightbox_test.jpg"})
+      Albuminum.Gallery.add_image_to_album(album, image)
+
+      {:ok, view, _html} = live(conn, ~p"/albums/#{album}")
+
+      # Click on image to open lightbox
+      html =
+        view
+        |> element("img[alt='lightbox_test.jpg']")
+        |> render_click()
+
+      # Lightbox should be visible with full-size image
+      assert html =~ "id=\"lightbox\""
+      assert html =~ "max-h-[90vh]"
+    end
+
+    test "clicking lightbox closes it", %{conn: conn, album: album} do
+      image = image_fixture(%{filename: "close_test.jpg"})
+      Albuminum.Gallery.add_image_to_album(album, image)
+
+      {:ok, view, _html} = live(conn, ~p"/albums/#{album}")
+
+      # Open lightbox
+      view |> element("img[alt='close_test.jpg']") |> render_click()
+
+      # Close by clicking the overlay
+      html = view |> element("#lightbox") |> render_click()
+
+      refute html =~ "id=\"lightbox\""
+    end
+  end
 end

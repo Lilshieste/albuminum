@@ -66,7 +66,9 @@ defmodule AlbuminumWeb.AlbumLive.Show do
                 <img
                   src={album_image.image.path}
                   alt={album_image.image.filename}
-                  class="w-full h-32 object-cover rounded-lg pointer-events-none"
+                  class="w-full h-32 object-cover rounded-lg cursor-pointer"
+                  phx-click="open_lightbox"
+                  phx-value-image-id={album_image.image.id}
                 />
                 <button
                   phx-click="remove_image"
@@ -139,6 +141,29 @@ defmodule AlbuminumWeb.AlbumLive.Show do
         current_scope={@current_scope}
         current_path={@current_path}
       />
+
+      <%= if @selected_image do %>
+        <div
+          id="lightbox"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          phx-click="close_lightbox"
+          phx-window-keydown="close_lightbox"
+          phx-key="Escape"
+        >
+          <button
+            class="absolute top-4 right-4 text-white hover:text-gray-300"
+            phx-click="close_lightbox"
+          >
+            <.icon name="hero-x-mark" class="w-8 h-8" />
+          </button>
+          <img
+            src={@selected_image.path}
+            alt={@selected_image.filename}
+            class="max-h-[90vh] max-w-[90vw] object-contain"
+            phx-click="close_lightbox"
+          />
+        </div>
+      <% end %>
     </Layouts.app>
     """
   end
@@ -158,7 +183,8 @@ defmodule AlbuminumWeb.AlbumLive.Show do
      |> assign(:album_share, album_share)
      |> assign(:available_images, available_images)
      |> assign(:grouped_images, grouped_images)
-     |> assign(:collapsed_groups, MapSet.new())}
+     |> assign(:collapsed_groups, MapSet.new())
+     |> assign(:selected_image, nil)}
   end
 
   @impl true
@@ -184,6 +210,15 @@ defmodule AlbuminumWeb.AlbumLive.Show do
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to update sharing")}
     end
+  end
+
+  def handle_event("open_lightbox", %{"image-id" => image_id}, socket) do
+    image = Gallery.get_image!(image_id)
+    {:noreply, assign(socket, :selected_image, image)}
+  end
+
+  def handle_event("close_lightbox", _, socket) do
+    {:noreply, assign(socket, :selected_image, nil)}
   end
 
   def handle_event("toggle_group", %{"group" => group_key}, socket) do
