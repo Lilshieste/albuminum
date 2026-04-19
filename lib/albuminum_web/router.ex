@@ -21,6 +21,9 @@ defmodule AlbuminumWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+
+    # Public album view (no auth required)
+    live "/view/:token", AlbumLive.PublicShow, :show
   end
 
   # Protected album routes - require authentication

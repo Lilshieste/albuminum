@@ -166,4 +166,103 @@ defmodule Albuminum.GalleryTest do
       assert length(imgs) == 1
     end
   end
+
+  describe "album sharing" do
+    import Albuminum.GalleryFixtures
+    import Albuminum.AccountsFixtures
+
+    alias Albuminum.Gallery.AlbumShare
+
+    test "create_album_share/1 creates a share with unique token" do
+      album = album_fixture()
+
+      assert {:ok, %AlbumShare{} = share} = Gallery.create_album_share(album)
+      assert share.album_id == album.id
+      assert is_binary(share.token)
+      assert String.length(share.token) > 10
+    end
+
+    test "create_album_share/1 fails for duplicate album" do
+      album = album_fixture()
+
+      assert {:ok, _share1} = Gallery.create_album_share(album)
+      assert {:error, _changeset} = Gallery.create_album_share(album)
+    end
+
+    test "get_album_share/1 returns share for album" do
+      album = album_fixture()
+      {:ok, share} = Gallery.create_album_share(album)
+
+      assert Gallery.get_album_share(album) == share
+    end
+
+    test "get_album_share/1 returns nil when no share exists" do
+      album = album_fixture()
+
+      assert Gallery.get_album_share(album) == nil
+    end
+
+    test "delete_album_share/1 removes the share" do
+      album = album_fixture()
+      {:ok, _share} = Gallery.create_album_share(album)
+
+      assert {:ok, _} = Gallery.delete_album_share(album)
+      assert Gallery.get_album_share(album) == nil
+    end
+
+    test "toggle_album_share/1 creates share when none exists" do
+      album = album_fixture()
+
+      assert {:ok, %AlbumShare{}} = Gallery.toggle_album_share(album)
+      assert Gallery.get_album_share(album) != nil
+    end
+
+    test "toggle_album_share/1 deletes share when one exists" do
+      album = album_fixture()
+      {:ok, _share} = Gallery.create_album_share(album)
+
+      # Returns the deleted share record
+      assert {:ok, %AlbumShare{}} = Gallery.toggle_album_share(album)
+      assert Gallery.get_album_share(album) == nil
+    end
+
+    test "get_album_by_share_token!/1 returns album for valid token" do
+      album = album_fixture()
+      {:ok, share} = Gallery.create_album_share(album)
+
+      found = Gallery.get_album_by_share_token!(share.token)
+      assert found.id == album.id
+    end
+
+    test "get_album_by_share_token!/1 raises for invalid token" do
+      assert_raise Ecto.NoResultsError, fn ->
+        Gallery.get_album_by_share_token!("invalid_token")
+      end
+    end
+
+    test "get_album_with_images_by_share_token!/1 preloads images" do
+      scope = user_scope_fixture()
+      album = album_fixture(%{scope: scope})
+      image = image_fixture()
+      Gallery.add_image_to_album(album, image)
+      {:ok, share} = Gallery.create_album_share(album)
+
+      found = Gallery.get_album_with_images_by_share_token!(share.token)
+      assert found.id == album.id
+      assert length(found.album_images) == 1
+    end
+
+    test "share is deleted when album is deleted" do
+      scope = user_scope_fixture()
+      album = album_fixture(%{scope: scope})
+      {:ok, share} = Gallery.create_album_share(album)
+      token = share.token
+
+      Gallery.delete_album(album)
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Gallery.get_album_by_share_token!(token)
+      end
+    end
+  end
 end

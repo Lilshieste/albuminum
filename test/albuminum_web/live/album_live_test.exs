@@ -189,4 +189,71 @@ defmodule AlbuminumWeb.AlbumLiveTest do
       assert html =~ ~s(return_to=%2Falbums%2F#{album.id})
     end
   end
+
+  describe "Album sharing" do
+    setup [:register_and_log_in_user, :create_album]
+
+    test "shows Share button when not sharing", %{conn: conn, album: album} do
+      {:ok, _view, html} = live(conn, ~p"/albums/#{album}")
+
+      assert html =~ "Share"
+      refute html =~ "Share link:"
+    end
+
+    test "clicking Share creates share and shows link", %{conn: conn, album: album} do
+      {:ok, view, _html} = live(conn, ~p"/albums/#{album}")
+
+      html = view |> element("button", "Share") |> render_click()
+
+      assert html =~ "Share link:"
+      assert html =~ "/view/"
+      assert html =~ "Stop Sharing"
+    end
+
+    test "clicking Stop Sharing removes share", %{conn: conn, album: album} do
+      # Create share first
+      Albuminum.Gallery.create_album_share(album)
+
+      {:ok, view, html} = live(conn, ~p"/albums/#{album}")
+      assert html =~ "Share link:"
+
+      html = view |> element("button", "Stop Sharing") |> render_click()
+
+      refute html =~ "Share link:"
+      assert html =~ "Share"
+    end
+  end
+
+  describe "Public album view" do
+    setup [:register_and_log_in_user, :create_album]
+
+    test "accessible via share token without auth", %{album: album} do
+      {:ok, share} = Albuminum.Gallery.create_album_share(album)
+
+      # Use fresh conn without auth
+      conn = Phoenix.ConnTest.build_conn()
+      {:ok, _view, html} = live(conn, ~p"/view/#{share.token}")
+
+      assert html =~ album.name
+    end
+
+    test "shows album images", %{album: album} do
+      image = image_fixture(%{filename: "test_image.jpg"})
+      Albuminum.Gallery.add_image_to_album(album, image)
+      {:ok, share} = Albuminum.Gallery.create_album_share(album)
+
+      conn = Phoenix.ConnTest.build_conn()
+      {:ok, _view, html} = live(conn, ~p"/view/#{share.token}")
+
+      assert html =~ "test_image.jpg"
+    end
+
+    test "raises for invalid token" do
+      conn = Phoenix.ConnTest.build_conn()
+
+      assert_raise Ecto.NoResultsError, fn ->
+        live(conn, ~p"/view/invalid_token")
+      end
+    end
+  end
 end

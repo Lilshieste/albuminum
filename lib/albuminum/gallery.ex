@@ -9,7 +9,7 @@ defmodule Albuminum.Gallery do
   import Ecto.Query, warn: false
   alias Albuminum.Repo
   alias Albuminum.Accounts.Scope
-  alias Albuminum.Gallery.{Album, Image, AlbumImage, ImageSource}
+  alias Albuminum.Gallery.{Album, AlbumShare, Image, AlbumImage, ImageSource}
 
   # ============================================================================
   # Albums (scoped to user)
@@ -65,6 +65,76 @@ defmodule Albuminum.Gallery do
   end
 
   # ============================================================================
+  # Album Sharing
+  # ============================================================================
+
+  @doc """
+  Gets the share record for an album, if one exists.
+  """
+  def get_album_share(%Album{id: album_id}) do
+    Repo.get_by(AlbumShare, album_id: album_id)
+  end
+
+  @doc """
+  Creates a share link for an album.
+  Generates a unique token.
+  """
+  def create_album_share(%Album{id: album_id}) do
+    %AlbumShare{}
+    |> AlbumShare.changeset(%{
+      album_id: album_id,
+      token: generate_share_token()
+    })
+    |> Repo.insert()
+  end
+
+  defp generate_share_token do
+    :crypto.strong_rand_bytes(16) |> Base.url_encode64(padding: false)
+  end
+
+  @doc """
+  Deletes the share link for an album.
+  """
+  def delete_album_share(%Album{} = album) do
+    case get_album_share(album) do
+      nil -> {:ok, nil}
+      share -> Repo.delete(share)
+    end
+  end
+
+  @doc """
+  Toggles sharing for an album.
+  Creates share if none exists, deletes if one does.
+  Returns {:ok, share} when created or {:ok, nil} when deleted.
+  """
+  def toggle_album_share(%Album{} = album) do
+    case get_album_share(album) do
+      nil -> create_album_share(album)
+      _share -> delete_album_share(album)
+    end
+  end
+
+  @doc """
+  Gets an album by its share token.
+  For public/unauthenticated access.
+  Raises if token is invalid.
+  """
+  def get_album_by_share_token!(token) do
+    share = Repo.get_by!(AlbumShare, token: token)
+    Repo.get!(Album, share.album_id)
+  end
+
+  @doc """
+  Gets an album with images by share token.
+  For public/unauthenticated access.
+  """
+  def get_album_with_images_by_share_token!(token) do
+    token
+    |> get_album_by_share_token!()
+    |> Repo.preload(album_images: :image)
+  end
+
+  # ============================================================================
   # Images (shared across all users)
   # ============================================================================
 
@@ -95,13 +165,21 @@ defmodule Albuminum.Gallery do
       )
       |> Repo.one()
 
-    %AlbumImage{}
-    |> AlbumImage.changeset(%{
-      album_id: album.id,
-      image_id: image.id,
-      position: next_position
-    })
-    |> Repo.insert()
+    result =
+      %AlbumImage{}
+      |> AlbumImage.changeset(%{
+        album_id: album.id,
+        image_id: image.id,
+        position: next_position
+      })
+      |> Repo.insert()
+
+    case result do
+      {:ok, _} -> broadcast_album_update(album.id)
+      _ -> :ok
+    end
+
+    result
   end
 
   @doc """
@@ -113,6 +191,7 @@ defmodule Albuminum.Gallery do
     )
     |> Repo.delete_all()
 
+    broadcast_album_update(album.id)
     :ok
   end
 
@@ -120,16 +199,24 @@ defmodule Albuminum.Gallery do
   Reorders images in album. Takes list of image_ids in desired order.
   """
   def reorder_album_images(%Album{} = album, image_ids) when is_list(image_ids) do
-    Repo.transaction(fn ->
-      image_ids
-      |> Enum.with_index()
-      |> Enum.each(fn {image_id, position} ->
-        from(ai in AlbumImage,
-          where: ai.album_id == ^album.id and ai.image_id == ^image_id
-        )
-        |> Repo.update_all(set: [position: position])
+    result =
+      Repo.transaction(fn ->
+        image_ids
+        |> Enum.with_index()
+        |> Enum.each(fn {image_id, position} ->
+          from(ai in AlbumImage,
+            where: ai.album_id == ^album.id and ai.image_id == ^image_id
+          )
+          |> Repo.update_all(set: [position: position])
+        end)
       end)
-    end)
+
+    case result do
+      {:ok, _} -> broadcast_album_update(album.id)
+      _ -> :ok
+    end
+
+    result
   end
 
   @doc """
@@ -324,4 +411,23 @@ defmodule Albuminum.Gallery do
   defp mime_type_to_ext("image/heic"), do: ".heic"
   defp mime_type_to_ext("video/mp4"), do: ".mp4"
   defp mime_type_to_ext(_), do: ".jpg"
+
+  # ============================================================================
+  # PubSub
+  # ============================================================================
+
+  @doc """
+  Broadcasts album update to subscribers.
+  Used for realtime updates in public view.
+  """
+  def broadcast_album_update(album_id) do
+    Phoenix.PubSub.broadcast(Albuminum.PubSub, "album:#{album_id}", {:album_updated, album_id})
+  end
+
+  @doc """
+  Subscribes to album updates.
+  """
+  def subscribe_to_album(album_id) do
+    Phoenix.PubSub.subscribe(Albuminum.PubSub, "album:#{album_id}")
+  end
 end

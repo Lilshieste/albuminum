@@ -20,8 +20,38 @@ defmodule AlbuminumWeb.AlbumLive.Show do
           <.button variant="primary" navigate={~p"/albums/#{@album}/edit?return_to=show"}>
             <.icon name="hero-pencil-square" /> Edit
           </.button>
+          <%= if @album_share do %>
+            <.button phx-click="toggle_share" variant="primary">
+              <.icon name="hero-link" /> Sharing
+            </.button>
+          <% else %>
+            <.button phx-click="toggle_share">
+              <.icon name="hero-share" /> Share
+            </.button>
+          <% end %>
         </:actions>
       </.header>
+
+      <%= if @album_share do %>
+        <div class="mt-4 p-4 bg-base-200 rounded-lg">
+          <div class="flex items-center gap-4">
+            <span class="text-sm font-medium">Share link:</span>
+            <code class="flex-1 text-sm bg-base-300 px-3 py-2 rounded" id="share-url">
+              {url(~p"/view/#{@album_share.token}")}
+            </code>
+            <button
+              phx-click={JS.dispatch("phx:copy", to: "#share-url")}
+              class="btn btn-sm btn-ghost"
+              title="Copy link"
+            >
+              <.icon name="hero-clipboard" class="w-4 h-4" />
+            </button>
+            <button phx-click="toggle_share" class="btn btn-sm btn-error btn-ghost">
+              Stop Sharing
+            </button>
+          </div>
+        </div>
+      <% end %>
 
       <div class="mt-8">
         <h2 class="text-lg font-semibold mb-4">Images in Album</h2>
@@ -117,6 +147,7 @@ defmodule AlbuminumWeb.AlbumLive.Show do
   def mount(%{"id" => id}, _session, socket) do
     scope = socket.assigns.current_scope
     album = Gallery.get_album_with_images!(scope, id)
+    album_share = Gallery.get_album_share(album)
     available_images = Gallery.list_images_not_in_album(album)
     grouped_images = Gallery.group_images_by_source(available_images)
 
@@ -124,6 +155,7 @@ defmodule AlbuminumWeb.AlbumLive.Show do
      socket
      |> assign(:page_title, album.name)
      |> assign(:album, album)
+     |> assign(:album_share, album_share)
      |> assign(:available_images, available_images)
      |> assign(:grouped_images, grouped_images)
      |> assign(:collapsed_groups, MapSet.new())}
@@ -137,6 +169,23 @@ defmodule AlbuminumWeb.AlbumLive.Show do
   end
 
   @impl true
+  def handle_event("toggle_share", _, socket) do
+    album = socket.assigns.album
+
+    case Gallery.toggle_album_share(album) do
+      {:ok, %Gallery.AlbumShare{} = share} ->
+        # Check if share was just created or deleted by looking at Ecto metadata
+        if share.__meta__.state == :deleted do
+          {:noreply, assign(socket, :album_share, nil)}
+        else
+          {:noreply, assign(socket, :album_share, share)}
+        end
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to update sharing")}
+    end
+  end
+
   def handle_event("toggle_group", %{"group" => group_key}, socket) do
     collapsed = socket.assigns.collapsed_groups
 
