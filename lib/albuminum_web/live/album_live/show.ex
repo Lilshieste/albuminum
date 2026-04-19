@@ -60,19 +60,42 @@ defmodule AlbuminumWeb.AlbumLive.Show do
         <%= if Enum.empty?(@available_images) do %>
           <p class="text-gray-500 italic">All images have been added to this album.</p>
         <% else %>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <%= for image <- @available_images do %>
-              <div
-                class="cursor-pointer hover:ring-2 hover:ring-blue-500 rounded-lg overflow-hidden"
-                phx-click="add_image"
-                phx-value-image-id={image.id}
-              >
-                <img
-                  src={image.path}
-                  alt={image.filename}
-                  class="w-full h-32 object-cover"
-                />
-                <p class="text-sm text-center py-1 bg-gray-100">{image.filename}</p>
+          <div class="space-y-6">
+            <%= for {label, key, images} <- @grouped_images do %>
+              <div class="border rounded-lg overflow-hidden">
+                <button
+                  phx-click="toggle_group"
+                  phx-value-group={key}
+                  class="w-full flex items-center justify-between px-4 py-3 bg-base-200 hover:bg-base-300 transition-colors"
+                >
+                  <span class="font-medium">
+                    {label}
+                    <span class="text-base-content/60 ml-2">({length(images)})</span>
+                  </span>
+                  <.icon
+                    name={if MapSet.member?(@collapsed_groups, key), do: "hero-chevron-right", else: "hero-chevron-down"}
+                    class="w-5 h-5"
+                  />
+                </button>
+
+                <%= unless MapSet.member?(@collapsed_groups, key) do %>
+                  <div class="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <%= for image <- images do %>
+                      <div
+                        class="cursor-pointer hover:ring-2 hover:ring-blue-500 rounded-lg overflow-hidden"
+                        phx-click="add_image"
+                        phx-value-image-id={image.id}
+                      >
+                        <img
+                          src={image.path}
+                          alt={image.filename}
+                          class="w-full h-32 object-cover"
+                        />
+                        <p class="text-sm text-center py-1 bg-gray-100">{image.filename}</p>
+                      </div>
+                    <% end %>
+                  </div>
+                <% end %>
               </div>
             <% end %>
           </div>
@@ -94,29 +117,40 @@ defmodule AlbuminumWeb.AlbumLive.Show do
     scope = socket.assigns.current_scope
     album = Gallery.get_album_with_images!(scope, id)
     available_images = Gallery.list_images_not_in_album(album)
+    grouped_images = Gallery.group_images_by_source(available_images)
 
     {:ok,
      socket
      |> assign(:page_title, album.name)
      |> assign(:album, album)
-     |> assign(:available_images, available_images)}
+     |> assign(:available_images, available_images)
+     |> assign(:grouped_images, grouped_images)
+     |> assign(:collapsed_groups, MapSet.new())}
   end
 
   @impl true
+  def handle_event("toggle_group", %{"group" => group_key}, socket) do
+    collapsed = socket.assigns.collapsed_groups
+
+    updated =
+      if MapSet.member?(collapsed, group_key) do
+        MapSet.delete(collapsed, group_key)
+      else
+        MapSet.put(collapsed, group_key)
+      end
+
+    {:noreply, assign(socket, :collapsed_groups, updated)}
+  end
+
   def handle_event("add_image", %{"image-id" => image_id}, socket) do
-    scope = socket.assigns.current_scope
     album = socket.assigns.album
     image = Gallery.get_image!(image_id)
 
     case Gallery.add_image_to_album(album, image) do
       {:ok, _} ->
-        album = Gallery.get_album_with_images!(scope, album.id)
-        available_images = Gallery.list_images_not_in_album(album)
-
         {:noreply,
          socket
-         |> assign(:album, album)
-         |> assign(:available_images, available_images)
+         |> refresh_album_data()
          |> put_flash(:info, "Image added")}
 
       {:error, _} ->
@@ -125,19 +159,14 @@ defmodule AlbuminumWeb.AlbumLive.Show do
   end
 
   def handle_event("remove_image", %{"image-id" => image_id}, socket) do
-    scope = socket.assigns.current_scope
     album = socket.assigns.album
     image = Gallery.get_image!(image_id)
 
     Gallery.remove_image_from_album(album, image)
 
-    album = Gallery.get_album_with_images!(scope, album.id)
-    available_images = Gallery.list_images_not_in_album(album)
-
     {:noreply,
      socket
-     |> assign(:album, album)
-     |> assign(:available_images, available_images)
+     |> refresh_album_data()
      |> put_flash(:info, "Image removed")}
   end
 
@@ -354,10 +383,6 @@ defmodule AlbuminumWeb.AlbumLive.Show do
     success_count = Enum.count(results, &match?({:ok, _}, &1))
     failure_count = length(results) - success_count
 
-    # Refresh album data
-    album = Gallery.get_album_with_images!(scope, album.id)
-    available_images = Gallery.list_images_not_in_album(album)
-
     send_update(GooglePhotosBrowser, id: component_id, status: :idle)
 
     flash_msg =
@@ -369,8 +394,7 @@ defmodule AlbuminumWeb.AlbumLive.Show do
 
     {:noreply,
      socket
-     |> assign(:album, album)
-     |> assign(:available_images, available_images)
+     |> refresh_album_data()
      |> clear_picker_state()
      |> put_flash(:info, flash_msg)}
   end
@@ -397,5 +421,19 @@ defmodule AlbuminumWeb.AlbumLive.Show do
     |> assign(:picker_session_id, nil)
     |> assign(:picker_component_id, nil)
     |> assign(:picker_album_id, nil)
+  end
+
+  defp refresh_album_data(socket) do
+    scope = socket.assigns.current_scope
+    album = socket.assigns.album
+
+    album = Gallery.get_album_with_images!(scope, album.id)
+    available_images = Gallery.list_images_not_in_album(album)
+    grouped_images = Gallery.group_images_by_source(available_images)
+
+    socket
+    |> assign(:album, album)
+    |> assign(:available_images, available_images)
+    |> assign(:grouped_images, grouped_images)
   end
 end

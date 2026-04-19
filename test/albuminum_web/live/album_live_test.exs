@@ -93,6 +93,40 @@ defmodule AlbuminumWeb.AlbumLiveTest do
       assert html =~ "Images in Album"
     end
 
+    test "groups available images by source", %{conn: conn, album: album} do
+      # Create sample and Google Photos images
+      _sample = image_fixture(%{filename: "sample.jpg"})
+      _google = google_photos_image_fixture(%{filename: "from_google.jpg"})
+
+      {:ok, _show_live, html} = live(conn, ~p"/albums/#{album}")
+
+      assert html =~ "Sample Images"
+      assert html =~ "Google Photos"
+    end
+
+    test "toggles image group collapse", %{conn: conn, album: album} do
+      _sample = image_fixture(%{filename: "sample.jpg"})
+
+      {:ok, show_live, html} = live(conn, ~p"/albums/#{album}")
+
+      # Group should be expanded by default, showing the image
+      assert html =~ "sample.jpg"
+      assert html =~ "hero-chevron-down"
+
+      # Click to collapse
+      html = show_live |> element("button[phx-value-group='sample']") |> render_click()
+
+      # Image should be hidden, chevron should point right
+      refute html =~ "sample.jpg"
+      assert html =~ "hero-chevron-right"
+
+      # Click to expand again
+      html = show_live |> element("button[phx-value-group='sample']") |> render_click()
+
+      assert html =~ "sample.jpg"
+      assert html =~ "hero-chevron-down"
+    end
+
     test "updates album and returns to show", %{conn: conn, album: album} do
       {:ok, show_live, _html} = live(conn, ~p"/albums/#{album}")
 

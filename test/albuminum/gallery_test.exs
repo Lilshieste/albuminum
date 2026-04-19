@@ -119,4 +119,51 @@ defmodule Albuminum.GalleryTest do
       assert {:error, :missing_base_url} = Gallery.import_google_photo_to_album(album, media_item, "fake_token")
     end
   end
+
+  describe "group_images_by_source/1" do
+    import Albuminum.GalleryFixtures
+
+    test "groups images by provider" do
+      sample1 = image_fixture(%{filename: "sample1.jpg"})
+      sample2 = image_fixture(%{filename: "sample2.jpg"})
+      google1 = google_photos_image_fixture(%{filename: "google1.jpg"})
+      google2 = google_photos_image_fixture(%{filename: "google2.jpg"})
+
+      # Preload source for sample images (will be nil)
+      sample1 = Albuminum.Repo.preload(sample1, :source)
+      sample2 = Albuminum.Repo.preload(sample2, :source)
+
+      images = [sample1, google1, sample2, google2]
+      grouped = Gallery.group_images_by_source(images)
+
+      assert length(grouped) == 2
+
+      # Google Photos should come first (sort order 0)
+      {label1, key1, imgs1} = Enum.at(grouped, 0)
+      assert label1 == "Google Photos"
+      assert key1 == "google_photos"
+      assert length(imgs1) == 2
+
+      # Sample Images should come last (sort order 99)
+      {label2, key2, imgs2} = Enum.at(grouped, 1)
+      assert label2 == "Sample Images"
+      assert key2 == "sample"
+      assert length(imgs2) == 2
+    end
+
+    test "returns empty list for empty input" do
+      assert Gallery.group_images_by_source([]) == []
+    end
+
+    test "handles images with only one source type" do
+      sample = image_fixture() |> Albuminum.Repo.preload(:source)
+
+      grouped = Gallery.group_images_by_source([sample])
+
+      assert [{label, key, imgs}] = grouped
+      assert label == "Sample Images"
+      assert key == "sample"
+      assert length(imgs) == 1
+    end
+  end
 end

@@ -29,4 +29,38 @@ defmodule Albuminum.GalleryFixtures do
     scope = user_scope_fixture()
     album_fixture(Map.put(attrs, :scope, scope))
   end
+
+  @doc """
+  Generate an image without a source (sample image).
+  """
+  def image_fixture(attrs \\ %{}) do
+    {:ok, image} =
+      attrs
+      |> Enum.into(%{
+        filename: "sample_#{System.unique_integer([:positive])}.jpg",
+        path: "https://picsum.photos/seed/test/400/300"
+      })
+      |> Albuminum.Gallery.create_image()
+
+    image
+  end
+
+  @doc """
+  Generate an image with a Google Photos source.
+  """
+  def google_photos_image_fixture(attrs \\ %{}) do
+    external_id = "google_#{System.unique_integer([:positive])}"
+
+    image_attrs =
+      attrs
+      |> Enum.into(%{
+        filename: "IMG_#{System.unique_integer([:positive])}.jpg",
+        path: "/uploads/#{external_id}.jpg"
+      })
+
+    {:ok, image} =
+      Albuminum.Gallery.create_image_with_source("google_photos", external_id, image_attrs)
+
+    Albuminum.Repo.preload(image, :source)
+  end
 end

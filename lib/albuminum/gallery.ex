@@ -134,13 +134,43 @@ defmodule Albuminum.Gallery do
 
   @doc """
   Gets images not yet in album (for "add image" picker).
+  Preloads source for grouping by provider.
   """
   def list_images_not_in_album(%Album{} = album) do
     subquery = from(ai in AlbumImage, where: ai.album_id == ^album.id, select: ai.image_id)
 
-    from(i in Image, where: i.id not in subquery(subquery))
+    from(i in Image, where: i.id not in subquery(subquery), preload: [:source])
     |> Repo.all()
   end
+
+  @doc """
+  Groups images by their source provider.
+  Returns list of {label, images} tuples, ordered for display.
+  Images without a source are grouped as "Sample Images".
+  """
+  def group_images_by_source(images) do
+    images
+    |> Enum.group_by(fn image ->
+      case image.source do
+        nil -> "sample"
+        %ImageSource{provider: provider} -> provider
+      end
+    end)
+    |> Enum.map(fn {key, imgs} -> {source_label(key), key, imgs} end)
+    |> Enum.sort_by(fn {_label, key, _imgs} -> source_sort_order(key) end)
+  end
+
+  defp source_label("sample"), do: "Sample Images"
+  defp source_label("google_photos"), do: "Google Photos"
+  defp source_label("icloud"), do: "iCloud"
+  defp source_label("onedrive"), do: "OneDrive"
+  defp source_label(other), do: String.capitalize(other)
+
+  defp source_sort_order("google_photos"), do: 0
+  defp source_sort_order("icloud"), do: 1
+  defp source_sort_order("onedrive"), do: 2
+  defp source_sort_order("sample"), do: 99
+  defp source_sort_order(_), do: 50
 
   # ============================================================================
   # External Image Sources (Google Photos, iCloud, etc.)
