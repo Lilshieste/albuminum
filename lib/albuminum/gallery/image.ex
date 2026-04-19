@@ -2,14 +2,14 @@ defmodule Albuminum.Gallery.Image do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Albuminum.Gallery.AlbumImage
+  alias Albuminum.Gallery.{AlbumImage, ImageSource}
 
   schema "images" do
     field :filename, :string
     field :path, :string
 
-    # Association: Image can belong to many albums through AlbumImage
     has_many :album_images, AlbumImage
+    has_one :source, ImageSource
 
     timestamps(type: :utc_datetime)
   end

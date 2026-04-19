@@ -25,11 +25,13 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/albuminum"
 import topbar from "../vendor/topbar"
 import Sortable from "./hooks/sortable"
+import PhotoPicker from "./hooks/photo_picker"
 
 // Custom hooks merged with colocated hooks
 const Hooks = {
   ...colocatedHooks,
-  Sortable
+  Sortable,
+  PhotoPicker
 }
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")

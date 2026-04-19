@@ -9,7 +9,7 @@ defmodule Albuminum.Gallery do
   import Ecto.Query, warn: false
   alias Albuminum.Repo
   alias Albuminum.Accounts.Scope
-  alias Albuminum.Gallery.{Album, Image, AlbumImage}
+  alias Albuminum.Gallery.{Album, Image, AlbumImage, ImageSource}
 
   # ============================================================================
   # Albums (scoped to user)
@@ -141,4 +141,157 @@ defmodule Albuminum.Gallery do
     from(i in Image, where: i.id not in subquery(subquery))
     |> Repo.all()
   end
+
+  # ============================================================================
+  # External Image Sources (Google Photos, iCloud, etc.)
+  # ============================================================================
+
+  @doc """
+  Finds existing image by external source, or creates new one.
+  Returns {:ok, image} or {:error, changeset}.
+  """
+  def find_or_create_from_source(provider, external_id, attrs) do
+    case get_image_by_source(provider, external_id) do
+      %Image{} = image ->
+        {:ok, image}
+
+      nil ->
+        create_image_with_source(provider, external_id, attrs)
+    end
+  end
+
+  @doc """
+  Gets image by external source provider and ID.
+  """
+  def get_image_by_source(provider, external_id) do
+    from(i in Image,
+      join: s in ImageSource,
+      on: s.image_id == i.id,
+      where: s.provider == ^provider and s.external_id == ^external_id
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  Creates image with external source reference.
+  """
+  def create_image_with_source(provider, external_id, attrs) do
+    Repo.transaction(fn ->
+      with {:ok, image} <- create_image(attrs),
+           {:ok, _source} <- create_image_source(image, provider, external_id, attrs[:metadata]) do
+        Repo.preload(image, :source)
+      else
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
+  end
+
+  defp create_image_source(image, provider, external_id, metadata) do
+    %ImageSource{}
+    |> ImageSource.changeset(%{
+      image_id: image.id,
+      provider: provider,
+      external_id: external_id,
+      metadata: metadata || %{}
+    })
+    |> Repo.insert()
+  end
+
+  @doc """
+  Imports Google Photos media item and adds to album.
+  Downloads image locally to avoid baseUrl expiration.
+  Avoids duplicates by checking external_id.
+  """
+  def import_google_photo_to_album(%Album{} = album, media_item, access_token) do
+    external_id = media_item["id"]
+
+    # Photo Picker API nests data in "mediaFile", Library API had it at top level
+    media_file = media_item["mediaFile"] || %{}
+    base_url = media_file["baseUrl"] || media_item["baseUrl"]
+
+    # Guard against missing baseUrl
+    if is_nil(base_url) or base_url == "" do
+      {:error, :missing_base_url}
+    else
+      import_google_photo_with_url(album, media_item, external_id, base_url, access_token)
+    end
+  end
+
+  defp import_google_photo_with_url(album, media_item, external_id, base_url, access_token) do
+    media_file = media_item["mediaFile"] || %{}
+    original_filename = media_file["filename"] || media_item["filename"] || "google_photo_#{external_id}"
+    mime_type = media_file["mimeType"] || media_item["mimeType"] || "image/jpeg"
+
+    # Download image from Google (=d for original size)
+    download_url = "#{base_url}=d"
+
+    case download_and_save_image(download_url, external_id, mime_type, access_token) do
+      {:ok, local_path} ->
+        attrs = %{
+          filename: original_filename,
+          path: local_path,
+          metadata: %{
+            "source" => "google_photos",
+            "media_item_id" => external_id,
+            "mime_type" => mime_type
+          }
+        }
+
+        case find_or_create_from_source("google_photos", external_id, attrs) do
+          {:ok, image} ->
+            add_image_to_album(album, image)
+
+          error ->
+            error
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp download_and_save_image(url, external_id, mime_type, access_token) do
+    require Logger
+    Logger.debug("Downloading image: #{url}")
+
+    case Req.get(url, auth: {:bearer, access_token}, max_redirects: 5, receive_timeout: 30_000) do
+      {:ok, %Req.Response{status: 200, body: body}} when is_binary(body) ->
+        # Generate unique filename
+        ext = mime_type_to_ext(mime_type)
+        filename = "#{external_id}#{ext}"
+        uploads_dir = Path.join([:code.priv_dir(:albuminum), "static", "uploads"])
+        file_path = Path.join(uploads_dir, filename)
+
+        # Ensure directory exists
+        File.mkdir_p!(uploads_dir)
+
+        Logger.debug("Saving #{byte_size(body)} bytes to #{file_path}")
+
+        case File.write(file_path, body) do
+          :ok ->
+            # Return web-accessible path
+            {:ok, "/uploads/#{filename}"}
+
+          {:error, reason} ->
+            Logger.error("File write failed: #{inspect(reason)}")
+            {:error, {:file_write, reason}}
+        end
+
+      {:ok, %Req.Response{status: status, body: body}} ->
+        Logger.error("Download failed with status #{status}: #{inspect(body)}")
+        {:error, {:download_failed, status}}
+
+      {:error, reason} ->
+        Logger.error("Download request failed: #{inspect(reason)}")
+        {:error, {:download_failed, reason}}
+    end
+  end
+
+  defp mime_type_to_ext("image/jpeg"), do: ".jpg"
+  defp mime_type_to_ext("image/png"), do: ".png"
+  defp mime_type_to_ext("image/gif"), do: ".gif"
+  defp mime_type_to_ext("image/webp"), do: ".webp"
+  defp mime_type_to_ext("image/heic"), do: ".heic"
+  defp mime_type_to_ext("video/mp4"), do: ".mp4"
+  defp mime_type_to_ext(_), do: ".jpg"
 end

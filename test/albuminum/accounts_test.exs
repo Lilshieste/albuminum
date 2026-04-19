@@ -443,8 +443,8 @@ defmodule Albuminum.AccountsTest do
   end
 
   describe "get_google_access_token/1" do
-    test "returns access token when exists" do
-      user = google_user_fixture()
+    test "returns access token when user has photos scope" do
+      user = google_photos_user_fixture()
 
       {:ok, access_token} = Accounts.get_google_access_token(user)
 
@@ -454,6 +454,12 @@ defmodule Albuminum.AccountsTest do
 
     test "returns error when user has no Google connection" do
       user = user_fixture()
+
+      assert {:error, :not_connected} = Accounts.get_google_access_token(user)
+    end
+
+    test "returns error when user has Google but no photos scope" do
+      user = google_user_fixture()
 
       assert {:error, :not_connected} = Accounts.get_google_access_token(user)
     end

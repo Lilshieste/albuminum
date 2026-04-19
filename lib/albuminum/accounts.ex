@@ -368,6 +368,7 @@ defmodule Albuminum.Accounts do
   @doc """
   Gets a valid Google access token for a user.
   Automatically refreshes if expired.
+  Only returns token if it has Photos Library scope.
   """
   def get_google_access_token(%User{id: user_id}) do
     case Repo.get_by(OAuthToken, user_id: user_id, provider: "google") do
@@ -375,8 +376,17 @@ defmodule Albuminum.Accounts do
         {:error, :not_connected}
 
       token ->
-        maybe_refresh_and_return(token)
+        if has_photos_scope?(token) do
+          maybe_refresh_and_return(token)
+        else
+          {:error, :not_connected}
+        end
     end
+  end
+
+  defp has_photos_scope?(%OAuthToken{scope: nil}), do: false
+  defp has_photos_scope?(%OAuthToken{scope: scope}) do
+    String.contains?(scope, "photospicker")
   end
 
   defp maybe_refresh_and_return(%OAuthToken{expires_at: nil} = token) do
@@ -399,9 +409,21 @@ defmodule Albuminum.Accounts do
         {:error, :no_refresh_token}
 
       refresh ->
-        new_client = Google.refresh_token!(refresh)
-        upsert_oauth_token(%User{id: user_id}, "google", new_client.token)
-        {:ok, new_client.token.access_token}
+        case Google.refresh_token(refresh) do
+          {:ok, new_client} ->
+            upsert_oauth_token(%User{id: user_id}, "google", new_client.token)
+            {:ok, new_client.token.access_token}
+
+          {:error, %OAuth2.Response{body: body}} ->
+            require Logger
+            Logger.error("Google token refresh failed: #{inspect(body)}")
+            {:error, :refresh_failed}
+
+          {:error, %OAuth2.Error{reason: reason}} ->
+            require Logger
+            Logger.error("Google token refresh error: #{inspect(reason)}")
+            {:error, :refresh_failed}
+        end
     end
   end
 end

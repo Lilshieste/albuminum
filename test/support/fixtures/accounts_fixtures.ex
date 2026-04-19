@@ -122,4 +122,18 @@ defmodule Albuminum.AccountsFixtures do
     {:ok, user} = Accounts.find_or_create_google_user(user_info, token)
     user
   end
+
+  @doc """
+  Creates a Google user with Photos Picker scope connected.
+  """
+  def google_photos_user_fixture(attrs \\ %{}) do
+    user = google_user_fixture(attrs)
+
+    photos_token = oauth_token_fixture(%{
+      other_params: %{"scope" => "openid email profile https://www.googleapis.com/auth/photospicker.mediaitems.readonly"}
+    })
+
+    Accounts.upsert_oauth_token(user, "google", photos_token)
+    user
+  end
 end

@@ -22,15 +22,29 @@ defmodule Albuminum.OAuth.Google do
   end
 
   @doc """
-  Generates the Google OAuth authorization URL.
-  Uses offline access to get refresh token.
+  Generates the Google OAuth authorization URL for login.
+  Uses minimal scopes - just enough to identify user.
   """
-  def authorize_url!(scope \\ default_scope()) do
+  def authorize_url_for_login! do
     client()
     |> OAuth2.Client.authorize_url!(
-      scope: scope,
+      scope: login_scope(),
       access_type: "offline",
       prompt: "consent"
+    )
+  end
+
+  @doc """
+  Generates the Google OAuth authorization URL for Photos access.
+  Includes photos scope and uses incremental auth.
+  """
+  def authorize_url_for_photos! do
+    client()
+    |> OAuth2.Client.authorize_url!(
+      scope: photos_scope(),
+      access_type: "offline",
+      prompt: "consent",
+      include_granted_scopes: "true"
     )
   end
 
@@ -57,12 +71,21 @@ defmodule Albuminum.OAuth.Google do
 
   @doc """
   Refreshes an expired access token using the refresh token.
+  Returns {:ok, client} or {:error, reason}.
   """
-  def refresh_token!(refresh_token) do
-    client()
-    |> OAuth2.Client.put_param(:grant_type, "refresh_token")
+  def refresh_token(refresh_token) do
+    # Use Refresh strategy instead of AuthCode for token refresh
+    OAuth2.Client.new(
+      strategy: OAuth2.Strategy.Refresh,
+      client_id: config(:client_id),
+      client_secret: config(:client_secret),
+      site: "https://accounts.google.com",
+      token_url: "https://oauth2.googleapis.com/token",
+      token_method: :post
+    )
     |> OAuth2.Client.put_param(:refresh_token, refresh_token)
-    |> OAuth2.Client.get_token!()
+    |> OAuth2.Client.put_serializer("application/json", Jason)
+    |> OAuth2.Client.get_token()
   end
 
   @doc """
@@ -77,18 +100,17 @@ defmodule Albuminum.OAuth.Google do
   end
 
   @doc """
-  Default OAuth scopes for login + Photos API access.
+  Minimal scopes for login - just identify user.
   """
-  def default_scope do
-    Enum.join(
-      [
-        "openid",
-        "email",
-        "profile",
-        "https://www.googleapis.com/auth/photoslibrary.readonly"
-      ],
-      " "
-    )
+  def login_scope do
+    "openid email profile"
+  end
+
+  @doc """
+  Scopes for Google Photos access.
+  """
+  def photos_scope do
+    "https://www.googleapis.com/auth/photospicker.mediaitems.readonly"
   end
 
   defp config(key) do

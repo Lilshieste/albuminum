@@ -86,4 +86,37 @@ defmodule Albuminum.GalleryTest do
       assert %Ecto.Changeset{} = Gallery.change_album(album)
     end
   end
+
+  describe "import_google_photo_to_album/3" do
+    import Albuminum.GalleryFixtures
+    import Albuminum.AccountsFixtures
+
+    test "returns error when baseUrl is nil" do
+      scope = user_scope_fixture()
+      album = album_fixture(%{scope: scope})
+
+      media_item = %{
+        "id" => "some_google_id",
+        "baseUrl" => nil,
+        "filename" => "test.jpg",
+        "mimeType" => "image/jpeg"
+      }
+
+      assert {:error, :missing_base_url} = Gallery.import_google_photo_to_album(album, media_item, "fake_token")
+    end
+
+    test "returns error when baseUrl is empty string" do
+      scope = user_scope_fixture()
+      album = album_fixture(%{scope: scope})
+
+      media_item = %{
+        "id" => "some_google_id",
+        "baseUrl" => "",
+        "filename" => "test.jpg",
+        "mimeType" => "image/jpeg"
+      }
+
+      assert {:error, :missing_base_url} = Gallery.import_google_photo_to_album(album, media_item, "fake_token")
+    end
+  end
 end

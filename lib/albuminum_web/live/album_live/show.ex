@@ -1,7 +1,10 @@
 defmodule AlbuminumWeb.AlbumLive.Show do
   use AlbuminumWeb, :live_view
 
+  alias Albuminum.Accounts
   alias Albuminum.Gallery
+  alias Albuminum.GooglePhotosPicker
+  alias AlbuminumWeb.Live.Components.GooglePhotosBrowser
 
   @impl true
   def render(assigns) do
@@ -75,6 +78,13 @@ defmodule AlbuminumWeb.AlbumLive.Show do
           </div>
         <% end %>
       </div>
+
+      <.live_component
+        module={GooglePhotosBrowser}
+        id="google-photos-browser"
+        album={@album}
+        current_scope={@current_scope}
+      />
     </Layouts.app>
     """
   end
@@ -139,5 +149,253 @@ defmodule AlbuminumWeb.AlbumLive.Show do
     album = Gallery.get_album_with_images!(scope, album.id)
 
     {:noreply, assign(socket, :album, album)}
+  end
+
+  # ============================================================================
+  # Google Photos Picker Integration
+  # ============================================================================
+
+  @impl true
+  def handle_info({:check_google_connection, component_id}, socket) do
+    user = socket.assigns.current_scope.user
+
+    case Accounts.get_google_access_token(user) do
+      {:ok, _token} ->
+        send_update(GooglePhotosBrowser, id: component_id, status: :idle)
+
+      {:error, :not_connected} ->
+        send_update(GooglePhotosBrowser, id: component_id, status: :not_connected)
+
+      {:error, _} ->
+        send_update(GooglePhotosBrowser,
+          id: component_id,
+          status: :error,
+          error_message: "Failed to check Google connection"
+        )
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:start_photo_picker, component_id, album_id}, socket) do
+    user = socket.assigns.current_scope.user
+
+    case Accounts.get_google_access_token(user) do
+      {:ok, token} ->
+        case GooglePhotosPicker.create_session(token) do
+          {:ok, %{"id" => session_id, "pickerUri" => picker_uri}} ->
+            # Open picker popup via JS hook
+            send_update(GooglePhotosBrowser,
+              id: component_id,
+              status: :polling,
+              session_id: session_id
+            )
+
+            # Push event to open popup (append /autoclose for auto-close behavior)
+            {:noreply,
+             socket
+             |> assign(:picker_session_id, session_id)
+             |> assign(:picker_component_id, component_id)
+             |> assign(:picker_album_id, album_id)
+             |> push_event("open_picker", %{url: "#{picker_uri}/autoclose"})
+             |> schedule_poll()}
+
+          {:error, reason} ->
+            require Logger
+            Logger.error("Failed to create picker session: #{inspect(reason)}")
+
+            send_update(GooglePhotosBrowser,
+              id: component_id,
+              status: :error,
+              error_message: "Failed to start photo picker"
+            )
+
+            {:noreply, socket}
+        end
+
+      {:error, :not_connected} ->
+        send_update(GooglePhotosBrowser, id: component_id, status: :not_connected)
+        {:noreply, socket}
+
+      {:error, _} ->
+        send_update(GooglePhotosBrowser,
+          id: component_id,
+          status: :error,
+          error_message: "Failed to authenticate with Google"
+        )
+
+        {:noreply, socket}
+    end
+  end
+
+  def handle_info(:poll_picker_session, socket) do
+    session_id = socket.assigns[:picker_session_id]
+    component_id = socket.assigns[:picker_component_id]
+    user = socket.assigns.current_scope.user
+
+    if is_nil(session_id) do
+      {:noreply, socket}
+    else
+      case Accounts.get_google_access_token(user) do
+        {:ok, token} ->
+          case GooglePhotosPicker.get_session_status(session_id, token) do
+            {:ready, _body} ->
+              # User finished selecting - fetch the items
+              send(self(), :fetch_picked_items)
+              {:noreply, socket}
+
+            {:pending, _body} ->
+              # Still picking, poll again
+              {:noreply, schedule_poll(socket)}
+
+            {:error, reason} ->
+              require Logger
+              Logger.error("Picker session poll error: #{inspect(reason)}")
+
+              send_update(GooglePhotosBrowser,
+                id: component_id,
+                status: :error,
+                error_message: "Picker session expired or failed"
+              )
+
+              {:noreply, clear_picker_state(socket)}
+          end
+
+        {:error, _} ->
+          send_update(GooglePhotosBrowser,
+            id: component_id,
+            status: :error,
+            error_message: "Google authentication expired"
+          )
+
+          {:noreply, clear_picker_state(socket)}
+      end
+    end
+  end
+
+  def handle_info(:fetch_picked_items, socket) do
+    session_id = socket.assigns[:picker_session_id]
+    component_id = socket.assigns[:picker_component_id]
+    album_id = socket.assigns[:picker_album_id]
+    user = socket.assigns.current_scope.user
+
+    case Accounts.get_google_access_token(user) do
+      {:ok, token} ->
+        case GooglePhotosPicker.list_picked_items(session_id, token) do
+          {:ok, %{"mediaItems" => items}} when is_list(items) and length(items) > 0 ->
+            send_update(GooglePhotosBrowser,
+              id: component_id,
+              status: :importing,
+              import_count: length(items)
+            )
+
+            # Import all selected photos
+            send(self(), {:import_picked_photos, album_id, items})
+            {:noreply, socket}
+
+          {:ok, _} ->
+            # No items selected
+            send_update(GooglePhotosBrowser, id: component_id, status: :idle)
+            {:noreply, clear_picker_state(socket) |> put_flash(:info, "No photos selected")}
+
+          {:error, reason} ->
+            require Logger
+            Logger.error("Failed to fetch picked items: #{inspect(reason)}")
+
+            send_update(GooglePhotosBrowser,
+              id: component_id,
+              status: :error,
+              error_message: "Failed to fetch selected photos"
+            )
+
+            {:noreply, clear_picker_state(socket)}
+        end
+
+      {:error, _} ->
+        send_update(GooglePhotosBrowser,
+          id: component_id,
+          status: :error,
+          error_message: "Google authentication expired"
+        )
+
+        {:noreply, clear_picker_state(socket)}
+    end
+  end
+
+  def handle_info({:import_picked_photos, album_id, items}, socket) do
+    require Logger
+    scope = socket.assigns.current_scope
+    component_id = socket.assigns[:picker_component_id]
+    album = Gallery.get_album!(scope, album_id)
+    user = scope.user
+
+    # Log what we received from Photo Picker API
+    Logger.info("Received #{length(items)} items from Photo Picker")
+    Logger.debug("First item structure: #{inspect(List.first(items))}")
+
+    # Get access token for downloading images
+    {:ok, access_token} = Accounts.get_google_access_token(user)
+
+    # Import all photos and log failures
+    results = Enum.map(items, fn item ->
+      result = Gallery.import_google_photo_to_album(album, item, access_token)
+
+      case result do
+        {:ok, _} ->
+          result
+
+        {:error, reason} ->
+          Logger.error("Failed to import photo #{item["id"]}: #{inspect(reason)}")
+          Logger.debug("Media item details: #{inspect(item)}")
+          result
+      end
+    end)
+
+    success_count = Enum.count(results, &match?({:ok, _}, &1))
+    failure_count = length(results) - success_count
+
+    # Refresh album data
+    album = Gallery.get_album_with_images!(scope, album.id)
+    available_images = Gallery.list_images_not_in_album(album)
+
+    send_update(GooglePhotosBrowser, id: component_id, status: :idle)
+
+    flash_msg =
+      if failure_count > 0 do
+        "Imported #{success_count} photo(s), #{failure_count} failed (check logs)"
+      else
+        "Imported #{success_count} photo(s)!"
+      end
+
+    {:noreply,
+     socket
+     |> assign(:album, album)
+     |> assign(:available_images, available_images)
+     |> clear_picker_state()
+     |> put_flash(:info, flash_msg)}
+  end
+
+  def handle_info({:cancel_picker_session, session_id}, socket) do
+    user = socket.assigns.current_scope.user
+
+    # Best effort cleanup
+    case Accounts.get_google_access_token(user) do
+      {:ok, token} -> GooglePhotosPicker.delete_session(session_id, token)
+      _ -> :ok
+    end
+
+    {:noreply, clear_picker_state(socket)}
+  end
+
+  defp schedule_poll(socket) do
+    Process.send_after(self(), :poll_picker_session, 3000)
+    socket
+  end
+
+  defp clear_picker_state(socket) do
+    socket
+    |> assign(:picker_session_id, nil)
+    |> assign(:picker_component_id, nil)
+    |> assign(:picker_album_id, nil)
   end
 end

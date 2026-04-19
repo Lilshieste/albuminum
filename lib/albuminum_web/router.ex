@@ -67,11 +67,24 @@ defmodule AlbuminumWeb.Router do
     post "/users/register", UserRegistrationController, :create
   end
 
-  # Google OAuth routes
+  # Google OAuth routes - login (unauthenticated only)
   scope "/auth", AlbuminumWeb do
     pipe_through [:browser, :redirect_if_user_is_authenticated]
 
     get "/google", GoogleAuthController, :request
+  end
+
+  # Google OAuth - connect Photos (authenticated only)
+  scope "/auth", AlbuminumWeb do
+    pipe_through [:browser, :require_authenticated_user]
+
+    get "/google/photos", GoogleAuthController, :connect_photos
+  end
+
+  # Google OAuth callback - works for both flows
+  scope "/auth", AlbuminumWeb do
+    pipe_through [:browser]
+
     get "/google/callback", GoogleAuthController, :callback
   end
 
