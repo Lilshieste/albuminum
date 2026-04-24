@@ -65,7 +65,7 @@ defmodule AlbuminumWeb.AlbumLive.Show do
               <div class="relative group" data-sortable-id={album_image.image.id}>
                 <img
                   src={album_image.image.path}
-                  alt={album_image.image.filename}
+                  alt={album_image.image.alt_text || album_image.image.filename}
                   class="w-full h-32 object-cover rounded-lg cursor-pointer"
                   phx-click="open_lightbox"
                   phx-value-image-id={album_image.image.id}
@@ -77,6 +77,13 @@ defmodule AlbuminumWeb.AlbumLive.Show do
                 >
                   <.icon name="hero-x-mark" class="w-4 h-4" />
                 </button>
+                <button
+                  phx-click="open_details"
+                  phx-value-image-id={album_image.image.id}
+                  class="absolute bottom-2 right-2 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+                >
+                  <.icon name="hero-information-circle" class="w-4 h-4" />
+                </button>
                 <span class="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
                   #{album_image.position + 1}
                 </span>
@@ -87,7 +94,31 @@ defmodule AlbuminumWeb.AlbumLive.Show do
       </div>
 
       <div class="mt-8 border-t pt-8">
-        <h2 class="text-lg font-semibold mb-4">Available Images</h2>
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold">Available Images</h2>
+
+          <%= if not Enum.empty?(@all_tags) do %>
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-base-content/60">Filter by tags:</span>
+              <div class="flex flex-wrap gap-1">
+                <%= for tag <- @all_tags do %>
+                  <button
+                    phx-click="toggle_tag_filter"
+                    phx-value-tag-id={tag.id}
+                    class={"badge cursor-pointer #{if MapSet.member?(@selected_tag_ids, tag.id), do: "badge-primary", else: "badge-ghost"}"}
+                  >
+                    {tag.name}
+                  </button>
+                <% end %>
+                <%= if MapSet.size(@selected_tag_ids) > 0 do %>
+                  <button phx-click="clear_tag_filter" class="text-xs text-error hover:underline ml-2">
+                    Clear
+                  </button>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
 
         <%= if Enum.empty?(@available_images) do %>
           <p class="text-gray-500 italic">All images have been added to this album.</p>
@@ -113,17 +144,26 @@ defmodule AlbuminumWeb.AlbumLive.Show do
                 <%= unless MapSet.member?(@collapsed_groups, key) do %>
                   <div class="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
                     <%= for image <- images do %>
-                      <div
-                        class="cursor-pointer hover:ring-2 hover:ring-blue-500 rounded-lg overflow-hidden"
-                        phx-click="add_image"
-                        phx-value-image-id={image.id}
-                      >
-                        <img
-                          src={image.path}
-                          alt={image.filename}
-                          class="w-full h-32 object-cover"
-                        />
-                        <p class="text-sm text-center py-1 bg-gray-100">{image.filename}</p>
+                      <div class="relative group rounded-lg overflow-hidden">
+                        <div
+                          class="cursor-pointer hover:ring-2 hover:ring-blue-500"
+                          phx-click="add_image"
+                          phx-value-image-id={image.id}
+                        >
+                          <img
+                            src={image.path}
+                            alt={image.alt_text || image.filename}
+                            class="w-full h-32 object-cover"
+                          />
+                          <p class="text-sm text-center py-1 bg-gray-100">{image.filename}</p>
+                        </div>
+                        <button
+                          phx-click="open_details"
+                          phx-value-image-id={image.id}
+                          class="absolute bottom-8 right-2 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+                        >
+                          <.icon name="hero-information-circle" class="w-4 h-4" />
+                        </button>
                       </div>
                     <% end %>
                   </div>
@@ -156,12 +196,104 @@ defmodule AlbuminumWeb.AlbumLive.Show do
           >
             <.icon name="hero-x-mark" class="w-8 h-8" />
           </button>
-          <img
-            src={@selected_image.path}
-            alt={@selected_image.filename}
-            class="max-h-[90vh] max-w-[90vw] object-contain"
-            phx-click="close_lightbox"
-          />
+          <div class="flex flex-col items-center">
+            <img
+              src={@selected_image.path}
+              alt={@selected_image.alt_text || @selected_image.filename}
+              class="max-h-[80vh] max-w-[90vw] object-contain"
+              phx-click="close_lightbox"
+            />
+            <%= if @selected_image.caption do %>
+              <p class="mt-4 text-white text-center max-w-2xl px-4">
+                {@selected_image.caption}
+              </p>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+
+      <%= if @details_image do %>
+        <div
+          id="image-details-modal"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          phx-window-keydown="close_details"
+          phx-key="Escape"
+        >
+          <div
+            class="bg-base-100 rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
+            phx-click-away="close_details"
+          >
+            <div class="p-6">
+              <div class="flex justify-between items-start mb-4">
+                <h2 class="text-lg font-semibold">Image Details</h2>
+                <button phx-click="close_details" class="btn btn-ghost btn-sm">
+                  <.icon name="hero-x-mark" class="w-5 h-5" />
+                </button>
+              </div>
+
+              <img
+                src={@details_image.path}
+                alt={@details_image.alt_text || @details_image.filename}
+                class="w-full h-48 object-contain mb-4 rounded bg-base-200"
+              />
+
+              <.form
+                for={@details_form}
+                id="image-details-form"
+                phx-change="validate_details"
+                phx-submit="save_details"
+              >
+                <.input field={@details_form[:alt_text]} type="textarea" label="Alt Text"
+                        placeholder="Describe the image for accessibility..." rows="2" />
+                <.input field={@details_form[:caption]} type="textarea" label="Caption"
+                        placeholder="Add a caption..." rows="3" />
+
+                <footer class="mt-6 flex gap-2">
+                  <.button type="submit" variant="primary" phx-disable-with="Saving...">
+                    Save Changes
+                  </.button>
+                  <.button type="button" phx-click="close_details">
+                    Cancel
+                  </.button>
+                </footer>
+              </.form>
+
+              <div class="mt-6 pt-6 border-t border-base-300">
+                <label class="label mb-1">
+                  <span class="label-text font-medium">Tags</span>
+                </label>
+                <div class="flex flex-wrap gap-2 mb-2 min-h-[2rem]">
+                  <%= for tag <- @image_tags do %>
+                    <span class="badge badge-primary gap-1">
+                      {tag.name}
+                      <button
+                        type="button"
+                        phx-click="remove_tag"
+                        phx-value-tag-id={tag.id}
+                        class="hover:text-error"
+                      >
+                        <.icon name="hero-x-mark" class="w-3 h-3" />
+                      </button>
+                    </span>
+                  <% end %>
+                </div>
+                <form phx-submit="add_tag" class="flex gap-2">
+                  <input
+                    type="text"
+                    name="tag_name"
+                    placeholder="Add tag..."
+                    class="input input-sm flex-1"
+                  />
+                  <button type="submit" class="btn btn-sm btn-primary">
+                    Add
+                  </button>
+                </form>
+                <p class="text-xs text-base-content/60 mt-1">
+                  {length(@image_tags)}/100 tags
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       <% end %>
     </Layouts.app>
@@ -184,7 +316,12 @@ defmodule AlbuminumWeb.AlbumLive.Show do
      |> assign(:available_images, available_images)
      |> assign(:grouped_images, grouped_images)
      |> assign(:collapsed_groups, MapSet.new())
-     |> assign(:selected_image, nil)}
+     |> assign(:selected_image, nil)
+     |> assign(:details_image, nil)
+     |> assign(:details_form, nil)
+     |> assign(:image_tags, [])
+     |> assign(:selected_tag_ids, MapSet.new())
+     |> assign(:all_tags, Gallery.list_tags(scope))}
   end
 
   @impl true
@@ -217,6 +354,122 @@ defmodule AlbuminumWeb.AlbumLive.Show do
 
   def handle_event("close_lightbox", _, socket) do
     {:noreply, assign(socket, :selected_image, nil)}
+  end
+
+  # ============================================================================
+  # Image Details Modal
+  # ============================================================================
+
+  def handle_event("open_details", %{"image-id" => image_id}, socket) do
+    image = Gallery.get_image!(image_id)
+    tags = Gallery.list_tags_for_image(image)
+    form = to_form(Gallery.Image.metadata_changeset(image, %{}))
+
+    {:noreply,
+     socket
+     |> assign(:details_image, image)
+     |> assign(:details_form, form)
+     |> assign(:image_tags, tags)}
+  end
+
+  def handle_event("close_details", _, socket) do
+    {:noreply,
+     socket
+     |> assign(:details_image, nil)
+     |> assign(:details_form, nil)
+     |> assign(:image_tags, [])}
+  end
+
+  def handle_event("validate_details", %{"image" => params}, socket) do
+    image = socket.assigns.details_image
+    changeset = Gallery.Image.metadata_changeset(image, params)
+    {:noreply, assign(socket, :details_form, to_form(changeset, action: :validate))}
+  end
+
+  def handle_event("save_details", %{"image" => params}, socket) do
+    image = socket.assigns.details_image
+
+    case Gallery.update_image_metadata(image, params) do
+      {:ok, updated_image} ->
+        {:noreply,
+         socket
+         |> assign(:details_image, updated_image)
+         |> assign(:details_form, to_form(Gallery.Image.metadata_changeset(updated_image, %{})))
+         |> put_flash(:info, "Image details saved")}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, :details_form, to_form(changeset, action: :validate))}
+    end
+  end
+
+  def handle_event("add_tag", %{"tag_name" => tag_name}, socket) when tag_name != "" do
+    scope = socket.assigns.current_scope
+    image = socket.assigns.details_image
+
+    with {:ok, tag} <- Gallery.find_or_create_tag(scope, tag_name),
+         {:ok, _} <- Gallery.add_tag_to_image(image, tag) do
+      tags = Gallery.list_tags_for_image(image)
+      {:noreply, assign(socket, :image_tags, tags)}
+    else
+      {:error, :tag_limit_reached} ->
+        {:noreply, put_flash(socket, :error, "Maximum 100 tags per image")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to add tag")}
+    end
+  end
+
+  def handle_event("add_tag", _, socket), do: {:noreply, socket}
+
+  def handle_event("remove_tag", %{"tag-id" => tag_id}, socket) do
+    image = socket.assigns.details_image
+    scope = socket.assigns.current_scope
+    tag = Gallery.get_tag!(scope, tag_id)
+
+    Gallery.remove_tag_from_image(image, tag)
+    tags = Gallery.list_tags_for_image(image)
+
+    {:noreply, assign(socket, :image_tags, tags)}
+  end
+
+  # ============================================================================
+  # Tag Filter
+  # ============================================================================
+
+  def handle_event("toggle_tag_filter", %{"tag-id" => tag_id}, socket) do
+    tag_id = String.to_integer(tag_id)
+    selected = socket.assigns.selected_tag_ids
+
+    updated =
+      if MapSet.member?(selected, tag_id) do
+        MapSet.delete(selected, tag_id)
+      else
+        MapSet.put(selected, tag_id)
+      end
+
+    {:noreply, socket |> assign(:selected_tag_ids, updated) |> refresh_filtered_images()}
+  end
+
+  def handle_event("clear_tag_filter", _, socket) do
+    {:noreply, socket |> assign(:selected_tag_ids, MapSet.new()) |> refresh_filtered_images()}
+  end
+
+  defp refresh_filtered_images(socket) do
+    album = socket.assigns.album
+    selected_tag_ids = socket.assigns.selected_tag_ids
+
+    available_images =
+      if MapSet.size(selected_tag_ids) == 0 do
+        Gallery.list_images_not_in_album(album)
+      else
+        Gallery.list_images_not_in_album_filtered(album, MapSet.to_list(selected_tag_ids))
+      end
+
+    grouped_images = Gallery.group_images_by_source(available_images)
+
+    socket
+    |> assign(:available_images, available_images)
+    |> assign(:grouped_images, grouped_images)
   end
 
   def handle_event("toggle_group", %{"group" => group_key}, socket) do

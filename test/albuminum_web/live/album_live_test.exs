@@ -292,7 +292,7 @@ defmodule AlbuminumWeb.AlbumLiveTest do
 
       # Lightbox should be visible with full-size image
       assert html =~ "id=\"lightbox\""
-      assert html =~ "max-h-[90vh]"
+      assert html =~ "max-h-[80vh]"
     end
 
     test "clicking lightbox closes it", %{conn: conn, album: album} do
@@ -322,7 +322,7 @@ defmodule AlbuminumWeb.AlbumLiveTest do
       html = view |> element("img[alt='public_lightbox.jpg']") |> render_click()
 
       assert html =~ "id=\"lightbox\""
-      assert html =~ "max-h-[90vh]"
+      assert html =~ "max-h-[80vh]"
     end
   end
 
@@ -371,6 +371,229 @@ defmodule AlbuminumWeb.AlbumLiveTest do
       # Regular view SHOULD show user menu
       assert html =~ "Settings"
       assert html =~ "Log out"
+    end
+  end
+
+  # ===========================================================================
+  # Step 3: Image Details Modal Tests
+  # ===========================================================================
+
+  describe "Image details modal" do
+    setup [:register_and_log_in_user, :create_album]
+
+    test "clicking info button opens image details modal", %{conn: conn, album: album} do
+      image = image_fixture(%{filename: "detail_test.jpg"})
+      Albuminum.Gallery.add_image_to_album(album, image)
+
+      {:ok, view, _html} = live(conn, ~p"/albums/#{album}")
+
+      # Click info button on image
+      html =
+        view
+        |> element("[phx-click='open_details'][phx-value-image-id='#{image.id}']")
+        |> render_click()
+
+      # Modal should be visible
+      assert html =~ "Image Details"
+      assert html =~ "Alt Text"
+      assert html =~ "Caption"
+      assert html =~ "Tags"
+    end
+
+    test "modal shows current image metadata", %{conn: conn, album: album} do
+      image = image_fixture(%{filename: "with_meta.jpg"})
+      Albuminum.Gallery.update_image_metadata(image, %{
+        alt_text: "Existing alt text",
+        caption: "Existing caption"
+      })
+      Albuminum.Gallery.add_image_to_album(album, image)
+
+      {:ok, view, _html} = live(conn, ~p"/albums/#{album}")
+
+      html =
+        view
+        |> element("[phx-click='open_details'][phx-value-image-id='#{image.id}']")
+        |> render_click()
+
+      assert html =~ "Existing alt text"
+      assert html =~ "Existing caption"
+    end
+
+    test "saving metadata updates image", %{conn: conn, album: album, scope: scope} do
+      image = image_fixture(%{filename: "save_test.jpg"})
+      Albuminum.Gallery.add_image_to_album(album, image)
+
+      {:ok, view, _html} = live(conn, ~p"/albums/#{album}")
+
+      # Open modal
+      view
+      |> element("[phx-click='open_details'][phx-value-image-id='#{image.id}']")
+      |> render_click()
+
+      # Submit form with new metadata
+      view
+      |> form("#image-details-form", %{
+        "image" => %{"alt_text" => "New alt text", "caption" => "New caption"}
+      })
+      |> render_submit()
+
+      # Verify image was updated
+      updated = Albuminum.Gallery.get_image!(image.id)
+      assert updated.alt_text == "New alt text"
+      assert updated.caption == "New caption"
+    end
+
+    test "adding tag to image shows in tag list", %{conn: conn, album: album, scope: scope} do
+      image = image_fixture(%{filename: "tag_test.jpg"})
+      Albuminum.Gallery.add_image_to_album(album, image)
+
+      {:ok, view, _html} = live(conn, ~p"/albums/#{album}")
+
+      # Open modal
+      view
+      |> element("[phx-click='open_details'][phx-value-image-id='#{image.id}']")
+      |> render_click()
+
+      # Add a tag via event
+      html = render_click(view, "add_tag", %{"tag_name" => "vacation"})
+
+      assert html =~ "vacation"
+    end
+
+    test "removing tag from image updates tag list", %{conn: conn, album: album, scope: scope} do
+      image = image_fixture(%{filename: "remove_tag_test.jpg"})
+      {:ok, tag} = Albuminum.Gallery.create_tag(scope, %{name: "removable"})
+      Albuminum.Gallery.add_tag_to_image(image, tag)
+      Albuminum.Gallery.add_image_to_album(album, image)
+
+      {:ok, view, _html} = live(conn, ~p"/albums/#{album}")
+
+      # Open modal
+      view
+      |> element("[phx-click='open_details'][phx-value-image-id='#{image.id}']")
+      |> render_click()
+
+      # Remove tag
+      view
+      |> element("[phx-click='remove_tag'][phx-value-tag-id='#{tag.id}']")
+      |> render_click()
+
+      # Tag no longer appears in modal's tag list (no remove button for it)
+      refute has_element?(view, "[phx-click='remove_tag'][phx-value-tag-id='#{tag.id}']")
+    end
+
+    test "closing modal returns to album view", %{conn: conn, album: album} do
+      image = image_fixture(%{filename: "close_test.jpg"})
+      Albuminum.Gallery.add_image_to_album(album, image)
+
+      {:ok, view, _html} = live(conn, ~p"/albums/#{album}")
+
+      # Open modal
+      view
+      |> element("[phx-click='open_details'][phx-value-image-id='#{image.id}']")
+      |> render_click()
+
+      # Close modal via event
+      html = render_click(view, "close_details")
+
+      refute html =~ "Image Details"
+    end
+
+    test "info button appears on available images too", %{conn: conn, album: album} do
+      _image = image_fixture(%{filename: "available_info.jpg"})
+
+      {:ok, _view, html} = live(conn, ~p"/albums/#{album}")
+
+      # Should have info button on available images
+      assert html =~ "open_details"
+    end
+  end
+
+  # ===========================================================================
+  # Step 4: Tag Filter Tests
+  # ===========================================================================
+
+  describe "Tag filter" do
+    setup [:register_and_log_in_user, :create_album]
+
+    test "filter dropdown shows user's tags", %{conn: conn, album: album, scope: scope} do
+      {:ok, _tag1} = Albuminum.Gallery.create_tag(scope, %{name: "vacation"})
+      {:ok, _tag2} = Albuminum.Gallery.create_tag(scope, %{name: "family"})
+
+      {:ok, _view, html} = live(conn, ~p"/albums/#{album}")
+
+      # Filter section should exist with tags
+      assert html =~ "Filter by tags"
+      assert html =~ "vacation"
+      assert html =~ "family"
+    end
+
+    test "selecting tag filters available images", %{conn: conn, album: album, scope: scope} do
+      # Create images with tags
+      img_vacation = image_fixture(%{filename: "beach.jpg"})
+      img_family = image_fixture(%{filename: "reunion.jpg"})
+      img_untagged = image_fixture(%{filename: "random.jpg"})
+
+      {:ok, vacation_tag} = Albuminum.Gallery.create_tag(scope, %{name: "vacation"})
+      Albuminum.Gallery.add_tag_to_image(img_vacation, vacation_tag)
+
+      {:ok, view, html} = live(conn, ~p"/albums/#{album}")
+
+      # All images visible initially
+      assert html =~ "beach.jpg"
+      assert html =~ "reunion.jpg"
+      assert html =~ "random.jpg"
+
+      # Filter by vacation tag
+      html = render_click(view, "toggle_tag_filter", %{"tag-id" => "#{vacation_tag.id}"})
+
+      # Only vacation-tagged image visible
+      assert html =~ "beach.jpg"
+      refute html =~ "reunion.jpg"
+      refute html =~ "random.jpg"
+    end
+
+    test "clearing filter shows all images again", %{conn: conn, album: album, scope: scope} do
+      img1 = image_fixture(%{filename: "img1.jpg"})
+      img2 = image_fixture(%{filename: "img2.jpg"})
+
+      {:ok, tag} = Albuminum.Gallery.create_tag(scope, %{name: "test"})
+      Albuminum.Gallery.add_tag_to_image(img1, tag)
+
+      {:ok, view, _html} = live(conn, ~p"/albums/#{album}")
+
+      # Filter
+      render_click(view, "toggle_tag_filter", %{"tag-id" => "#{tag.id}"})
+
+      # Clear filter
+      html = render_click(view, "clear_tag_filter")
+
+      # Both images visible
+      assert html =~ "img1.jpg"
+      assert html =~ "img2.jpg"
+    end
+
+    test "multiple tags use OR logic", %{conn: conn, album: album, scope: scope} do
+      img_vacation = image_fixture(%{filename: "beach.jpg"})
+      img_family = image_fixture(%{filename: "reunion.jpg"})
+      img_untagged = image_fixture(%{filename: "random.jpg"})
+
+      {:ok, vacation_tag} = Albuminum.Gallery.create_tag(scope, %{name: "vacation"})
+      {:ok, family_tag} = Albuminum.Gallery.create_tag(scope, %{name: "family"})
+
+      Albuminum.Gallery.add_tag_to_image(img_vacation, vacation_tag)
+      Albuminum.Gallery.add_tag_to_image(img_family, family_tag)
+
+      {:ok, view, _html} = live(conn, ~p"/albums/#{album}")
+
+      # Select both tags
+      render_click(view, "toggle_tag_filter", %{"tag-id" => "#{vacation_tag.id}"})
+      html = render_click(view, "toggle_tag_filter", %{"tag-id" => "#{family_tag.id}"})
+
+      # Both tagged images visible, untagged not
+      assert html =~ "beach.jpg"
+      assert html =~ "reunion.jpg"
+      refute html =~ "random.jpg"
     end
   end
 end

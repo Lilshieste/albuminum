@@ -36,6 +36,9 @@ defmodule AlbuminumWeb.Router do
       live "/albums/new", AlbumLive.Form, :new
       live "/albums/:id", AlbumLive.Show, :show
       live "/albums/:id/edit", AlbumLive.Form, :edit
+
+      live "/tags", TagsLive.Index, :index
+      live "/tags/:id", TagsLive.Show, :show
     end
   end
 

@@ -9,7 +9,7 @@ defmodule Albuminum.Gallery do
   import Ecto.Query, warn: false
   alias Albuminum.Repo
   alias Albuminum.Accounts.Scope
-  alias Albuminum.Gallery.{Album, AlbumShare, Image, AlbumImage, ImageSource}
+  alias Albuminum.Gallery.{Album, AlbumShare, Image, AlbumImage, ImageSource, Tag, ImageTag}
 
   # ============================================================================
   # Albums (scoped to user)
@@ -432,5 +432,155 @@ defmodule Albuminum.Gallery do
   """
   def subscribe_to_album(album_id) do
     Phoenix.PubSub.subscribe(Albuminum.PubSub, "album:#{album_id}")
+  end
+
+  # ============================================================================
+  # Tags (scoped to user)
+  # ============================================================================
+
+  @doc """
+  Lists all tags for the current user.
+  """
+  def list_tags(%Scope{user: user}) do
+    from(t in Tag, where: t.user_id == ^user.id, order_by: t.name)
+    |> Repo.all()
+  end
+
+  @doc """
+  Lists all tags for the current user with images preloaded.
+  """
+  def list_tags_with_images(%Scope{user: user}) do
+    from(t in Tag, where: t.user_id == ^user.id, order_by: t.name)
+    |> Repo.all()
+    |> Repo.preload(:images)
+  end
+
+  @doc """
+  Gets tag by ID, scoped to current user.
+  Raises if tag doesn't exist or doesn't belong to user.
+  """
+  def get_tag!(%Scope{user: user}, id) do
+    from(t in Tag, where: t.id == ^id and t.user_id == ^user.id)
+    |> Repo.one!()
+  end
+
+  @doc """
+  Gets tag with images preloaded.
+  """
+  def get_tag_with_images!(%Scope{} = scope, id) do
+    scope
+    |> get_tag!(id)
+    |> Repo.preload(:images)
+  end
+
+  @doc """
+  Creates tag for current user.
+  """
+  def create_tag(%Scope{user: user}, attrs) do
+    %Tag{user_id: user.id}
+    |> Tag.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Finds existing tag by name for user, or creates it.
+  """
+  def find_or_create_tag(%Scope{user: user} = scope, name) do
+    name = String.trim(name)
+
+    case Repo.get_by(Tag, user_id: user.id, name: name) do
+      %Tag{} = tag -> {:ok, tag}
+      nil -> create_tag(scope, %{name: name})
+    end
+  end
+
+  @doc """
+  Deletes a tag.
+  """
+  def delete_tag(%Tag{} = tag) do
+    Repo.delete(tag)
+  end
+
+  # ============================================================================
+  # Image Tags
+  # ============================================================================
+
+  @max_tags_per_image 100
+
+  @doc """
+  Adds tag to image. Enforces 100 tag limit per image.
+  Returns {:error, :tag_limit_reached} if limit exceeded.
+  """
+  def add_tag_to_image(%Image{} = image, %Tag{} = tag) do
+    current_count = count_tags_for_image(image)
+
+    if current_count >= @max_tags_per_image do
+      {:error, :tag_limit_reached}
+    else
+      %ImageTag{}
+      |> ImageTag.changeset(%{image_id: image.id, tag_id: tag.id})
+      |> Repo.insert(on_conflict: :nothing)
+    end
+  end
+
+  @doc """
+  Removes tag from image.
+  """
+  def remove_tag_from_image(%Image{} = image, %Tag{} = tag) do
+    from(it in ImageTag, where: it.image_id == ^image.id and it.tag_id == ^tag.id)
+    |> Repo.delete_all()
+
+    :ok
+  end
+
+  @doc """
+  Lists all tags for an image.
+  """
+  def list_tags_for_image(%Image{} = image) do
+    image
+    |> Repo.preload(:tags)
+    |> Map.get(:tags)
+  end
+
+  defp count_tags_for_image(%Image{id: image_id}) do
+    from(it in ImageTag, where: it.image_id == ^image_id, select: count())
+    |> Repo.one()
+  end
+
+  # ============================================================================
+  # Image Metadata
+  # ============================================================================
+
+  @doc """
+  Updates image metadata (alt_text, caption).
+  """
+  def update_image_metadata(%Image{} = image, attrs) do
+    image
+    |> Image.metadata_changeset(attrs)
+    |> Repo.update()
+  end
+
+  # ============================================================================
+  # Image Filtering by Tags
+  # ============================================================================
+
+  @doc """
+  Gets images not in album, filtered by tags (OR logic).
+  If tag_ids is empty, returns all images not in album.
+  """
+  def list_images_not_in_album_filtered(%Album{} = album, []) do
+    list_images_not_in_album(album)
+  end
+
+  def list_images_not_in_album_filtered(%Album{} = album, tag_ids) when is_list(tag_ids) do
+    album_subquery = from(ai in AlbumImage, where: ai.album_id == ^album.id, select: ai.image_id)
+    tag_subquery = from(it in ImageTag, where: it.tag_id in ^tag_ids, select: it.image_id)
+
+    from(i in Image,
+      where: i.id not in subquery(album_subquery),
+      where: i.id in subquery(tag_subquery),
+      preload: [:source, :tags]
+    )
+    |> Repo.all()
   end
 end

@@ -41,11 +41,16 @@ defmodule AlbuminumWeb.AlbumLive.PublicShow do
               <div class="relative">
                 <img
                   src={album_image.image.path}
-                  alt={album_image.image.filename}
+                  alt={album_image.image.alt_text || album_image.image.filename}
                   class="w-full h-32 object-cover rounded-lg cursor-pointer"
                   phx-click="open_lightbox"
                   phx-value-image-id={album_image.image.id}
                 />
+                <%= if album_image.image.caption do %>
+                  <p class="mt-1 text-sm text-base-content/70 line-clamp-2">
+                    {album_image.image.caption}
+                  </p>
+                <% end %>
               </div>
             <% end %>
           </div>
@@ -66,12 +71,19 @@ defmodule AlbuminumWeb.AlbumLive.PublicShow do
           >
             <.icon name="hero-x-mark" class="w-8 h-8" />
           </button>
-          <img
-            src={@selected_image.path}
-            alt={@selected_image.filename}
-            class="max-h-[90vh] max-w-[90vw] object-contain"
-            phx-click="close_lightbox"
-          />
+          <div class="flex flex-col items-center">
+            <img
+              src={@selected_image.path}
+              alt={@selected_image.alt_text || @selected_image.filename}
+              class="max-h-[80vh] max-w-[90vw] object-contain"
+              phx-click="close_lightbox"
+            />
+            <%= if @selected_image.caption do %>
+              <p class="mt-4 text-white text-center max-w-2xl px-4">
+                {@selected_image.caption}
+              </p>
+            <% end %>
+          </div>
         </div>
       <% end %>
     </Layouts.public>
