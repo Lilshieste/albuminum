@@ -4,6 +4,8 @@ defmodule Albuminum.Gallery.AlbumImage do
 
   alias Albuminum.Gallery.{Album, Image}
 
+  @primary_key {:id, Albuminum.Types.UUID, autogenerate: true}
+  @foreign_key_type Albuminum.Types.UUID
   schema "album_images" do
     field :position, :integer
 

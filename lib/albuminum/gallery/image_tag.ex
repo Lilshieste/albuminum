@@ -9,6 +9,7 @@ defmodule Albuminum.Gallery.ImageTag do
   alias Albuminum.Gallery.{Image, Tag}
 
   @primary_key false
+  @foreign_key_type Albuminum.Types.UUID
   schema "image_tags" do
     belongs_to :image, Image, primary_key: true
     belongs_to :tag, Tag, primary_key: true

@@ -10,6 +10,8 @@ defmodule Albuminum.Gallery.Tag do
   alias Albuminum.Accounts.User
   alias Albuminum.Gallery.Image
 
+  @primary_key {:id, Albuminum.Types.UUID, autogenerate: true}
+  @foreign_key_type Albuminum.Types.UUID
   schema "tags" do
     field :name, :string
 

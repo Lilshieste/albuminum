@@ -4,6 +4,8 @@ defmodule Albuminum.Gallery.AlbumShare do
 
   alias Albuminum.Gallery.Album
 
+  @primary_key {:id, Albuminum.Types.UUID, autogenerate: true}
+  @foreign_key_type Albuminum.Types.UUID
   schema "album_shares" do
     field :token, :string
     field :is_active, :boolean, default: true

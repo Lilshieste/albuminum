@@ -440,7 +440,6 @@ defmodule AlbuminumWeb.AlbumLive.Show do
   # ============================================================================
 
   def handle_event("toggle_tag_filter", %{"tag-id" => tag_id}, socket) do
-    tag_id = String.to_integer(tag_id)
     selected = socket.assigns.selected_tag_ids
 
     updated =

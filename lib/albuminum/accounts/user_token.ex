@@ -12,6 +12,8 @@ defmodule Albuminum.Accounts.UserToken do
   @change_email_validity_in_days 7
   @session_validity_in_days 14
 
+  @primary_key {:id, Albuminum.Types.UUID, autogenerate: true}
+  @foreign_key_type Albuminum.Types.UUID
   schema "users_tokens" do
     field :token, :binary
     field :context, :string

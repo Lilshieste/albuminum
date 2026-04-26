@@ -2,6 +2,8 @@ defmodule Albuminum.Accounts.User do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @primary_key {:id, Albuminum.Types.UUID, autogenerate: true}
+  @foreign_key_type Albuminum.Types.UUID
   schema "users" do
     field :email, :string
     field :password, :string, virtual: true, redact: true

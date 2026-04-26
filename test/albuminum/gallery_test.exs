@@ -324,20 +324,22 @@ defmodule Albuminum.GalleryTest do
     import Albuminum.AccountsFixtures
 
     test "valid changeset with image_id and tag_id" do
-      changeset = ImageTag.changeset(%ImageTag{}, %{image_id: 1, tag_id: 1})
+      uuid1 = Ecto.UUID.generate()
+      uuid2 = Ecto.UUID.generate()
+      changeset = ImageTag.changeset(%ImageTag{}, %{image_id: uuid1, tag_id: uuid2})
 
       assert changeset.valid?
     end
 
     test "invalid changeset without image_id" do
-      changeset = ImageTag.changeset(%ImageTag{}, %{tag_id: 1})
+      changeset = ImageTag.changeset(%ImageTag{}, %{tag_id: Ecto.UUID.generate()})
 
       refute changeset.valid?
       assert "can't be blank" in errors_on(changeset).image_id
     end
 
     test "invalid changeset without tag_id" do
-      changeset = ImageTag.changeset(%ImageTag{}, %{image_id: 1})
+      changeset = ImageTag.changeset(%ImageTag{}, %{image_id: Ecto.UUID.generate()})
 
       refute changeset.valid?
       assert "can't be blank" in errors_on(changeset).tag_id

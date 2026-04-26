@@ -10,6 +10,8 @@ defmodule Albuminum.Accounts.OAuthToken do
   alias Albuminum.Accounts.TokenEncryption
   alias Albuminum.Accounts.User
 
+  @primary_key {:id, Albuminum.Types.UUID, autogenerate: true}
+  @foreign_key_type Albuminum.Types.UUID
   schema "oauth_tokens" do
     field :provider, :string
     field :access_token, :binary

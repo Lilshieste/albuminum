@@ -11,6 +11,8 @@ defmodule Albuminum.Gallery.ImageSource do
 
   @providers ~w(google_photos icloud onedrive)
 
+  @primary_key {:id, Albuminum.Types.UUID, autogenerate: true}
+  @foreign_key_type Albuminum.Types.UUID
   schema "image_sources" do
     field :provider, :string
     field :external_id, :string
