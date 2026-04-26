@@ -49,9 +49,6 @@ defmodule AlbuminumWeb.Live.Components.GooglePhotosBrowser do
             <p class="text-sm text-base-content/50">
               A Google Photos window should have opened. Select your photos and click "Done".
             </p>
-            <button phx-click="cancel_picker" phx-target={@myself} class="btn btn-ghost btn-sm mt-4">
-              Cancel
-            </button>
           </div>
 
         <% :importing -> %>
@@ -79,7 +76,6 @@ defmodule AlbuminumWeb.Live.Components.GooglePhotosBrowser do
     {:ok,
      socket
      |> assign(:status, :idle)
-     |> assign(:session_id, nil)
      |> assign(:import_count, 0)
      |> assign(:error_message, nil)}
   end
@@ -88,7 +84,6 @@ defmodule AlbuminumWeb.Live.Components.GooglePhotosBrowser do
   def update(assigns, socket) do
     socket = assign(socket, assigns)
 
-    # Check Google connection on first load
     if socket.assigns[:status] == :idle && is_nil(socket.assigns[:checked_connection]) do
       send(self(), {:check_google_connection, socket.assigns.id})
       socket = assign(socket, :checked_connection, true)
@@ -101,25 +96,13 @@ defmodule AlbuminumWeb.Live.Components.GooglePhotosBrowser do
   @impl true
   def handle_event("start_picker", _, socket) do
     send(self(), {:start_photo_picker, socket.assigns.id, socket.assigns.album.id})
-    {:noreply, assign(socket, status: :polling)}
-  end
-
-  def handle_event("cancel_picker", _, socket) do
-    if socket.assigns.session_id do
-      send(self(), {:cancel_picker_session, socket.assigns.session_id})
-    end
-
-    {:noreply,
-     socket
-     |> assign(:status, :idle)
-     |> assign(:session_id, nil)}
+    {:noreply, socket}
   end
 
   def handle_event("reset_picker", _, socket) do
     {:noreply,
      socket
      |> assign(:status, :idle)
-     |> assign(:session_id, nil)
      |> assign(:error_message, nil)}
   end
 end

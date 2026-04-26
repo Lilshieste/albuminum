@@ -22,7 +22,8 @@ config :albuminum, :scopes,
 
 config :albuminum,
   ecto_repos: [Albuminum.Repo],
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime],
+  google_photos_picker: Albuminum.GooglePhotosPicker
 
 # Configure the endpoint
 config :albuminum, AlbuminumWeb.Endpoint,

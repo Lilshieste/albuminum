@@ -190,6 +190,36 @@ defmodule AlbuminumWeb.AlbumLiveTest do
     end
   end
 
+  describe "Google Photos picker" do
+    import Mox
+
+    setup :verify_on_exit!
+
+    setup do
+      user = Albuminum.AccountsFixtures.google_photos_user_fixture()
+      scope = Albuminum.Accounts.Scope.for_user(user)
+      album = album_fixture(%{scope: scope})
+      conn = Phoenix.ConnTest.build_conn() |> log_in_user(user)
+      %{conn: conn, user: user, scope: scope, album: album}
+    end
+
+    test "clicking Select from Google Photos shows polling state", %{conn: conn, album: album} do
+      Albuminum.GooglePhotosPickerMock
+      |> expect(:create_session, fn _token ->
+        {:ok, %{"id" => "test-session-123", "pickerUri" => "https://photos.google.com/picker/123"}}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/albums/#{album}")
+
+      view
+      |> element("button", "Select from Google Photos")
+      |> render_click()
+
+      html = render(view)
+      assert html =~ "Waiting for you to select photos"
+    end
+  end
+
   describe "Album sharing" do
     setup [:register_and_log_in_user, :create_album]
 
@@ -419,7 +449,7 @@ defmodule AlbuminumWeb.AlbumLiveTest do
       assert html =~ "Existing caption"
     end
 
-    test "saving metadata updates image", %{conn: conn, album: album, scope: scope} do
+    test "saving metadata updates image", %{conn: conn, album: album, scope: _scope} do
       image = image_fixture(%{filename: "save_test.jpg"})
       Albuminum.Gallery.add_image_to_album(album, image)
 
@@ -443,7 +473,7 @@ defmodule AlbuminumWeb.AlbumLiveTest do
       assert updated.caption == "New caption"
     end
 
-    test "adding tag to image shows in tag list", %{conn: conn, album: album, scope: scope} do
+    test "adding tag to image shows in tag list", %{conn: conn, album: album, scope: _scope} do
       image = image_fixture(%{filename: "tag_test.jpg"})
       Albuminum.Gallery.add_image_to_album(album, image)
 
@@ -531,8 +561,8 @@ defmodule AlbuminumWeb.AlbumLiveTest do
     test "selecting tag filters available images", %{conn: conn, album: album, scope: scope} do
       # Create images with tags
       img_vacation = image_fixture(%{filename: "beach.jpg"})
-      img_family = image_fixture(%{filename: "reunion.jpg"})
-      img_untagged = image_fixture(%{filename: "random.jpg"})
+      _img_family = image_fixture(%{filename: "reunion.jpg"})
+      _img_untagged = image_fixture(%{filename: "random.jpg"})
 
       {:ok, vacation_tag} = Albuminum.Gallery.create_tag(scope, %{name: "vacation"})
       Albuminum.Gallery.add_tag_to_image(img_vacation, vacation_tag)
@@ -555,7 +585,7 @@ defmodule AlbuminumWeb.AlbumLiveTest do
 
     test "clearing filter shows all images again", %{conn: conn, album: album, scope: scope} do
       img1 = image_fixture(%{filename: "img1.jpg"})
-      img2 = image_fixture(%{filename: "img2.jpg"})
+      _img2 = image_fixture(%{filename: "img2.jpg"})
 
       {:ok, tag} = Albuminum.Gallery.create_tag(scope, %{name: "test"})
       Albuminum.Gallery.add_tag_to_image(img1, tag)
@@ -576,7 +606,7 @@ defmodule AlbuminumWeb.AlbumLiveTest do
     test "multiple tags use OR logic", %{conn: conn, album: album, scope: scope} do
       img_vacation = image_fixture(%{filename: "beach.jpg"})
       img_family = image_fixture(%{filename: "reunion.jpg"})
-      img_untagged = image_fixture(%{filename: "random.jpg"})
+      _img_untagged = image_fixture(%{filename: "random.jpg"})
 
       {:ok, vacation_tag} = Albuminum.Gallery.create_tag(scope, %{name: "vacation"})
       {:ok, family_tag} = Albuminum.Gallery.create_tag(scope, %{name: "family"})

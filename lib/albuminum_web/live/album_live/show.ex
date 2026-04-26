@@ -3,8 +3,11 @@ defmodule AlbuminumWeb.AlbumLive.Show do
 
   alias Albuminum.Accounts
   alias Albuminum.Gallery
-  alias Albuminum.GooglePhotosPicker
   alias AlbuminumWeb.Live.Components.GooglePhotosBrowser
+
+  defp google_photos_picker do
+    Application.get_env(:albuminum, :google_photos_picker, Albuminum.GooglePhotosPicker)
+  end
 
   @impl true
   def render(assigns) do
@@ -454,24 +457,6 @@ defmodule AlbuminumWeb.AlbumLive.Show do
     {:noreply, socket |> assign(:selected_tag_ids, MapSet.new()) |> refresh_filtered_images()}
   end
 
-  defp refresh_filtered_images(socket) do
-    album = socket.assigns.album
-    selected_tag_ids = socket.assigns.selected_tag_ids
-
-    available_images =
-      if MapSet.size(selected_tag_ids) == 0 do
-        Gallery.list_images_not_in_album(album)
-      else
-        Gallery.list_images_not_in_album_filtered(album, MapSet.to_list(selected_tag_ids))
-      end
-
-    grouped_images = Gallery.group_images_by_source(available_images)
-
-    socket
-    |> assign(:available_images, available_images)
-    |> assign(:grouped_images, grouped_images)
-  end
-
   def handle_event("toggle_group", %{"group" => group_key}, socket) do
     collapsed = socket.assigns.collapsed_groups
 
@@ -523,6 +508,24 @@ defmodule AlbuminumWeb.AlbumLive.Show do
     {:noreply, assign(socket, :album, album)}
   end
 
+  defp refresh_filtered_images(socket) do
+    album = socket.assigns.album
+    selected_tag_ids = socket.assigns.selected_tag_ids
+
+    available_images =
+      if MapSet.size(selected_tag_ids) == 0 do
+        Gallery.list_images_not_in_album(album)
+      else
+        Gallery.list_images_not_in_album_filtered(album, MapSet.to_list(selected_tag_ids))
+      end
+
+    grouped_images = Gallery.group_images_by_source(available_images)
+
+    socket
+    |> assign(:available_images, available_images)
+    |> assign(:grouped_images, grouped_images)
+  end
+
   # ============================================================================
   # Google Photos Picker Integration
   # ============================================================================
@@ -536,7 +539,6 @@ defmodule AlbuminumWeb.AlbumLive.Show do
         send_update(GooglePhotosBrowser, id: component_id, status: :idle)
 
       {:error, _} ->
-        # Token missing, refresh failed, or no photos scope - need re-auth
         send_update(GooglePhotosBrowser, id: component_id, status: :not_connected)
     end
 
@@ -548,16 +550,14 @@ defmodule AlbuminumWeb.AlbumLive.Show do
 
     case Accounts.get_google_access_token(user) do
       {:ok, token} ->
-        case GooglePhotosPicker.create_session(token) do
+        case google_photos_picker().create_session(token) do
           {:ok, %{"id" => session_id, "pickerUri" => picker_uri}} ->
-            # Open picker popup via JS hook
             send_update(GooglePhotosBrowser,
               id: component_id,
               status: :polling,
               session_id: session_id
             )
 
-            # Push event to open popup (append /autoclose for auto-close behavior)
             {:noreply,
              socket
              |> assign(:picker_session_id, session_id)
@@ -580,7 +580,6 @@ defmodule AlbuminumWeb.AlbumLive.Show do
         end
 
       {:error, _} ->
-        # Token missing, refresh failed, or no photos scope - need re-auth
         send_update(GooglePhotosBrowser, id: component_id, status: :not_connected)
         {:noreply, socket}
     end
@@ -596,14 +595,12 @@ defmodule AlbuminumWeb.AlbumLive.Show do
     else
       case Accounts.get_google_access_token(user) do
         {:ok, token} ->
-          case GooglePhotosPicker.get_session_status(session_id, token) do
-            {:ready, _body} ->
-              # User finished selecting - fetch the items
+          case google_photos_picker().get_session_status(session_id, token) do
+            {:ready, _} ->
               send(self(), :fetch_picked_items)
               {:noreply, socket}
 
-            {:pending, _body} ->
-              # Still picking, poll again
+            {:pending, _} ->
               {:noreply, schedule_poll(socket)}
 
             {:error, reason} ->
@@ -620,7 +617,6 @@ defmodule AlbuminumWeb.AlbumLive.Show do
           end
 
         {:error, _} ->
-          # Token expired and refresh failed - need re-auth
           send_update(GooglePhotosBrowser, id: component_id, status: :not_connected)
           {:noreply, clear_picker_state(socket)}
       end
@@ -635,7 +631,7 @@ defmodule AlbuminumWeb.AlbumLive.Show do
 
     case Accounts.get_google_access_token(user) do
       {:ok, token} ->
-        case GooglePhotosPicker.list_picked_items(session_id, token) do
+        case google_photos_picker().list_picked_items(session_id, token) do
           {:ok, %{"mediaItems" => items}} when is_list(items) and length(items) > 0 ->
             send_update(GooglePhotosBrowser,
               id: component_id,
@@ -643,12 +639,10 @@ defmodule AlbuminumWeb.AlbumLive.Show do
               import_count: length(items)
             )
 
-            # Import all selected photos
             send(self(), {:import_picked_photos, album_id, items})
             {:noreply, socket}
 
           {:ok, _} ->
-            # No items selected
             send_update(GooglePhotosBrowser, id: component_id, status: :idle)
             {:noreply, clear_picker_state(socket) |> put_flash(:info, "No photos selected")}
 
@@ -666,7 +660,6 @@ defmodule AlbuminumWeb.AlbumLive.Show do
         end
 
       {:error, _} ->
-        # Token expired and refresh failed - need re-auth
         send_update(GooglePhotosBrowser, id: component_id, status: :not_connected)
         {:noreply, clear_picker_state(socket)}
     end
@@ -679,27 +672,22 @@ defmodule AlbuminumWeb.AlbumLive.Show do
     album = Gallery.get_album!(scope, album_id)
     user = scope.user
 
-    # Log what we received from Photo Picker API
-    Logger.info("Received #{length(items)} items from Photo Picker")
-    Logger.debug("First item structure: #{inspect(List.first(items))}")
-
-    # Get access token for downloading images
     {:ok, access_token} = Accounts.get_google_access_token(user)
 
-    # Import all photos and log failures
-    results = Enum.map(items, fn item ->
-      result = Gallery.import_google_photo_to_album(album, item, access_token)
+    results =
+      Enum.map(items, fn item ->
+        result = Gallery.import_google_photo_to_album(album, item, access_token)
 
-      case result do
-        {:ok, _} ->
-          result
+        case result do
+          {:error, reason} ->
+            Logger.error("Failed to import photo #{item["id"]}: #{inspect(reason)}")
 
-        {:error, reason} ->
-          Logger.error("Failed to import photo #{item["id"]}: #{inspect(reason)}")
-          Logger.debug("Media item details: #{inspect(item)}")
-          result
-      end
-    end)
+          _ ->
+            :ok
+        end
+
+        result
+      end)
 
     success_count = Enum.count(results, &match?({:ok, _}, &1))
     failure_count = length(results) - success_count
@@ -707,29 +695,15 @@ defmodule AlbuminumWeb.AlbumLive.Show do
     send_update(GooglePhotosBrowser, id: component_id, status: :idle)
 
     flash_msg =
-      if failure_count > 0 do
-        "Imported #{success_count} photo(s), #{failure_count} failed (check logs)"
-      else
-        "Imported #{success_count} photo(s)!"
-      end
+      if failure_count > 0,
+        do: "Imported #{success_count} photo(s), #{failure_count} failed",
+        else: "Imported #{success_count} photo(s)!"
 
     {:noreply,
      socket
      |> refresh_album_data()
      |> clear_picker_state()
      |> put_flash(:info, flash_msg)}
-  end
-
-  def handle_info({:cancel_picker_session, session_id}, socket) do
-    user = socket.assigns.current_scope.user
-
-    # Best effort cleanup
-    case Accounts.get_google_access_token(user) do
-      {:ok, token} -> GooglePhotosPicker.delete_session(session_id, token)
-      _ -> :ok
-    end
-
-    {:noreply, clear_picker_state(socket)}
   end
 
   defp schedule_poll(socket) do

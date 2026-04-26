@@ -406,8 +406,8 @@ defmodule Albuminum.GalleryTest do
 
     test "list_tags/1 returns all tags for user" do
       scope = user_scope_fixture()
-      {:ok, tag1} = Gallery.create_tag(scope, %{name: "vacation"})
-      {:ok, tag2} = Gallery.create_tag(scope, %{name: "family"})
+      {:ok, _tag1} = Gallery.create_tag(scope, %{name: "vacation"})
+      {:ok, _tag2} = Gallery.create_tag(scope, %{name: "family"})
 
       tags = Gallery.list_tags(scope)
       assert length(tags) == 2
@@ -597,7 +597,7 @@ defmodule Albuminum.GalleryTest do
       scope = user_scope_fixture()
       album = album_fixture(%{scope: scope})
       image1 = image_fixture(%{filename: "img1.jpg"})
-      image2 = image_fixture(%{filename: "img2.jpg"})
+      _image2 = image_fixture(%{filename: "img2.jpg"})
 
       # Add image1 to album
       Gallery.add_image_to_album(album, image1)
@@ -613,7 +613,7 @@ defmodule Albuminum.GalleryTest do
       album = album_fixture(%{scope: scope})
       image1 = image_fixture(%{filename: "vacation.jpg"})
       image2 = image_fixture(%{filename: "family.jpg"})
-      image3 = image_fixture(%{filename: "work.jpg"})
+      _image3 = image_fixture(%{filename: "work.jpg"})
 
       {:ok, vacation_tag} = Gallery.create_tag(scope, %{name: "vacation"})
       {:ok, family_tag} = Gallery.create_tag(scope, %{name: "family"})

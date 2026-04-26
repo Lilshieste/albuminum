@@ -4,21 +4,20 @@ defmodule Albuminum.GooglePhotosPicker do
   Session-based photo selection through Google's picker UI.
   """
 
+  @callback create_session(String.t()) :: {:ok, map()} | {:error, term()}
+  @callback get_session_status(String.t(), String.t()) ::
+              {:ready, map()} | {:pending, map()} | {:error, term()}
+  @callback list_picked_items(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  @callback delete_session(String.t(), String.t()) :: :ok | {:error, term()}
+
   @base_url "https://photospicker.googleapis.com/v1"
 
   @doc """
   Creates a picking session.
   Returns `pickerUri` (redirect user there) and session `id` (for polling).
-
-  Options:
-  - `:timeout` - Session timeout (default "600s")
   """
-  def create_session(access_token, opts \\ []) do
-    timeout = Keyword.get(opts, :timeout, "600s")
-
-    body = %{
-      "pollingConfig" => %{"timeoutIn" => timeout}
-    }
+  def create_session(access_token) do
+    body = %{"pollingConfig" => %{"timeoutIn" => "600s"}}
 
     "#{@base_url}/sessions"
     |> Req.post(json: body, auth: {:bearer, access_token})

@@ -39,3 +39,6 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# Use mock for Google Photos Picker in tests
+config :albuminum, :google_photos_picker, Albuminum.GooglePhotosPickerMock
